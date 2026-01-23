@@ -1,15 +1,18 @@
 repeat task.wait() until game:IsLoaded()
 
 ------------------------------------------------
--- CONFIG URL
+-- CONFIG URL (Update link Github của bạn vào đây)
 ------------------------------------------------
--- URL này phải chuẩn xác, nếu link die thì auto load sẽ tạch
-local SCRIPT_URL = "https://raw.githubusercontent.com/huynhphutoan1908-dev/BustupidHub/main/BustupidHub.lua"
+local SCRIPT_URL = "https://raw.githubusercontent.com/huynhphutoan1908-dev/BustupidHub/refs/heads/main/BustupidHub"
 
 ------------------------------------------------
 -- LOAD UI
 ------------------------------------------------
-local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+local success, Rayfield = pcall(function()
+	return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+end)
+
+if not success then return end
 
 ------------------------------------------------
 -- SERVICES
@@ -18,76 +21,71 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
-
 local LocalPlayer = Players.LocalPlayer
 
 ------------------------------------------------
--- AUTOSAVE SYSTEM
+-- AUTOSAVE SYSTEM (V3 - RESET FIX)
 ------------------------------------------------
-local SAVE_FILE = "BustupidHub_Save.json"
+-- Đổi tên file sang v3 để bỏ qua file lỗi cũ
+local SAVE_FILE = "BustupidHub_Save_v3.json" 
 
 local SaveData = {
 	autoXYZ = false,
 	autoTimeTP = false,
 	autoPlayerTP = false,
-	autoSafeHop = false,    
+	autoSafeHop = false,
 	autoTimeHop = false,    
 	autoTPObbyTime = false, 
 	hopDelay = 8,
 	autoLoad = true
 }
 
+-- Load dữ liệu (nếu có file v3)
 if isfile(SAVE_FILE) then
 	pcall(function()
 		local readData = HttpService:JSONDecode(readfile(SAVE_FILE))
 		for k,v in pairs(readData) do
-			if SaveData[k] ~= nil then
-				SaveData[k] = v
-			end
+			if SaveData[k] ~= nil then SaveData[k] = v end
 		end
 	end)
 end
+
+-- [QUAN TRỌNG] FORCE RESET: 
+-- Luôn tắt các chức năng nguy hiểm khi vừa Execute Script
+-- Để tránh việc nhân vật tự bay lung tung.
+SaveData.autoXYZ = false
+SaveData.autoTPObbyTime = false
+SaveData.autoTimeHop = false
+SaveData.autoSafeHop = false
+SaveData.autoPlayerTP = false
 
 local function Save()
 	writefile(SAVE_FILE, HttpService:JSONEncode(SaveData))
 end
 
 ------------------------------------------------
--- QUEUE AUTOLOAD (FIXED & STRONG)
+-- QUEUE AUTOLOAD
 ------------------------------------------------
 local function QueueAutoLoad()
 	if not SaveData.autoLoad then return end
-	
-	-- Nhúng trực tiếp URL vào chuỗi code để tránh lỗi biến
-	local nextServerCode = [[
-		task.wait(3) -- Chờ 3s để game load các module cần thiết
+	local nextCode = [[
+		task.wait(3)
 		repeat task.wait() until game:IsLoaded()
-		pcall(function()
-			loadstring(game:HttpGet("]] .. SCRIPT_URL .. [["))()
-		end)
+		pcall(function() loadstring(game:HttpGet("]] .. SCRIPT_URL .. [["))() end)
 	]]
-	
-	-- Hỗ trợ nhiều loại Executor hơn
-	local queueFunc = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
-	
-	if queueFunc then
-		queueFunc(nextServerCode)
-	else
-		-- Nếu executor quá cùi bắp không có hàm này
-		warn("Executor của bạn không hỗ trợ Queue Auto Load!")
-	end
+	if queue_on_teleport then queue_on_teleport(nextCode)
+	elseif syn and syn.queue_on_teleport then syn.queue_on_teleport(nextCode)
+	elseif fluxus and fluxus.queue_on_teleport then fluxus.queue_on_teleport(nextCode) end
 end
 
 ------------------------------------------------
--- CONFIG VARIABLES
+-- VARIABLES
 ------------------------------------------------
 local TARGET_POS = Vector3.new(910, -16.7, -526)
 local TARGET_MINUTE = 5
 local TELEPORT_TIMES = 10
 
-------------------------------------------------
--- STATE VARIABLES
-------------------------------------------------
+-- Khởi tạo biến từ SaveData (lúc này đã là false hết)
 local autoXYZ = SaveData.autoXYZ
 local autoTimeTP = SaveData.autoTimeTP
 local autoPlayerTP = SaveData.autoPlayerTP
@@ -100,135 +98,109 @@ local targetPlayer = nil
 local lastHour = -1
 local inputServerId = ""
 local isHopping = false 
+local failCount = 0
 
 ------------------------------------------------
--- SAFE HOP LOGIC
+-- LOGIC FIX 772 (AUTO RETRY)
 ------------------------------------------------
-local function safeHop()
+local safeHop 
+
+-- Tự động bắt lỗi Teleport Failed
+TeleportService.TeleportInitFailed:Connect(function(player, result, errorMessage)
+	if player == LocalPlayer then
+		if isHopping or autoSafeHop or autoTimeHop then
+			task.wait(1)
+			isHopping = false 
+			failCount = failCount + 1
+			-- Nếu lỗi quá 3 lần thì Rejoin server cũ cho lẹ
+			if failCount > 3 then
+				failCount = 0
+				TeleportService:Teleport(game.PlaceId, LocalPlayer) 
+			else
+				safeHop() -- Thử tìm server khác
+			end
+		end
+	end
+end)
+
+safeHop = function()
 	if isHopping then return end 
 	isHopping = true
+	Save()
+	QueueAutoLoad()
 
-	Save() 
-	QueueAutoLoad() -- Gọi hàm queue trước khi tele
-
-	Rayfield:Notify({
-		Title = "🛡️ Safe Hop",
-		Content = "Đang tìm server khác...",
-		Duration = 3
-	})
+	Rayfield:Notify({Title = "🛡️ Hop", Content = "Đang tìm server trống > 2 slot...", Duration = 3})
 	
-	task.wait(1.5)
-
 	local PlaceID = game.PlaceId
 	local foundAnything = ""
+	local validServers = {} 
 	
-	local function TPReturner()
+	local function FetchServers()
 		local Site;
 		local success, result = pcall(function()
 			return game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100' .. (foundAnything ~= "" and ("&cursor=" .. foundAnything) or ""))
 		end)
 
 		if not success then return end
-		
 		Site = HttpService:JSONDecode(result)
-		
-		if Site.nextPageCursor and Site.nextPageCursor ~= "null" then
-			foundAnything = Site.nextPageCursor
-		end
+		if Site.nextPageCursor and Site.nextPageCursor ~= "null" then foundAnything = Site.nextPageCursor end
 		
 		for i,v in pairs(Site.data) do
 			local ID = tostring(v.id)
-			if tonumber(v.maxPlayers) > tonumber(v.playing) and ID ~= game.JobId then
-				Rayfield:Notify({Title = "Found Server", Content = "Đang kết nối...", Duration = 2})
-				task.wait(math.random(10, 20) / 10)
-				TeleportService:TeleportToPlaceInstance(PlaceID, ID, LocalPlayer)
-				task.wait(30) 
+			local max = tonumber(v.maxPlayers)
+			local playing = tonumber(v.playing)
+			
+			-- FIX 772: Chỉ vào server còn trống ít nhất 2 chỗ
+			if (max - playing >= 2) and ID ~= game.JobId then
+				table.insert(validServers, ID)
 			end
 		end
 	end
 
-	pcall(function()
-		TPReturner()
-		if foundAnything ~= "" then
-			TPReturner()
-		end
+	pcall(function() 
+		FetchServers() 
+		if foundAnything ~= "" then task.wait(0.2); FetchServers() end
 	end)
 	
-	Rayfield:Notify({Title = "Không tìm thấy", Content = "Rejoin server ngẫu nhiên...", Duration = 2})
-	TeleportService:Teleport(game.PlaceId, LocalPlayer)
-	
-	task.wait(5)
-	isHopping = false 
+	if #validServers > 0 then
+		Rayfield:Notify({Title = "Found", Content = "Thấy " .. #validServers .. " sv ngon. Connecting...", Duration = 2})
+		local randomID = validServers[math.random(1, #validServers)]
+		task.wait(math.random(10, 20) / 10) 
+		TeleportService:TeleportToPlaceInstance(PlaceID, randomID, LocalPlayer)
+		
+		-- Chống kẹt: Sau 25s chưa đi thì reset
+		task.delay(25, function()
+			if isHopping then isHopping = false end
+		end)
+	else
+		Rayfield:Notify({Title = "Full", Content = "Full hết rồi, Rejoin...", Duration = 2})
+		TeleportService:Teleport(game.PlaceId, LocalPlayer)
+		task.wait(5)
+		isHopping = false
+	end
 end
 
 ------------------------------------------------
--- WINDOW UI
+-- UI SETUP (KHÔI PHỤC ĐẦY ĐỦ)
 ------------------------------------------------
 local Window = Rayfield:CreateWindow({
 	Name = "Bustupid Hub",
-	LoadingTitle = "Bustupid Hub",
-	LoadingSubtitle = "FIXED QUEUE LOAD",
+	LoadingTitle = "FULL RESTORE V3",
+	LoadingSubtitle = "Fix 772 & Config Reset",
 	KeySystem = false
 })
 
-------------------------------------------------
--- TAB EVENT
-------------------------------------------------
+-- === TAB 1: EVENT ===
 local TeleTab = Window:CreateTab("Event", 4483362458)
 
-TeleTab:CreateSection("Teleport Tools")
-
-TeleTab:CreateButton({
-	Name = "Teleport XYZ Ngay",
-	Callback = function()
-		if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-			LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(TARGET_POS)
-		end
-	end
-})
-
-TeleTab:CreateButton({
-	Name = "Lưu Vị Trí Hiện Tại làm XYZ",
-	Callback = function()
-		if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-			TARGET_POS = LocalPlayer.Character.HumanoidRootPart.Position
-			Rayfield:Notify({Title = "Updated", Content = "Đã cập nhật tọa độ mới!", Duration = 2})
-		end
-	end
-})
-
-TeleTab:CreateToggle({
-	Name = "Auto Teleport XYZ (Luôn luôn)",
-	CurrentValue = autoXYZ,
-	Callback = function(v)
-		autoXYZ = v
-		SaveData.autoXYZ = v
-		Save()
-	end
-})
-
-TeleTab:CreateSection("Auto Time Features")
-
-TeleTab:CreateToggle({
-	Name = "Auto TP xx:05 (Mỗi tiếng 1 lần)",
-	CurrentValue = autoTimeTP,
-	Callback = function(v)
-		autoTimeTP = v
-		SaveData.autoTimeTP = v
-		Save()
-	end
-})
-
+TeleTab:CreateSection("Auto Event Config")
 TeleTab:CreateToggle({
 	Name = "Auto TP Event Obby (05-10p)",
-	CurrentValue = autoTPObbyTime,
+	CurrentValue = autoTPObbyTime, 
 	Callback = function(v)
 		autoTPObbyTime = v
-		SaveData.autoTPObbyTime = v
-		Save()
 	end
 })
-
 TeleTab:CreateToggle({
 	Name = "Auto Hop (Phút 05-10)",
 	CurrentValue = autoTimeHop,
@@ -239,93 +211,79 @@ TeleTab:CreateToggle({
 	end
 })
 
-------------------------------------------------
--- TAB COMBAT
-------------------------------------------------
-local CombatTab = Window:CreateTab("Combat", 4483362458)
+TeleTab:CreateSection("Teleport Config")
+-- [ĐÃ KHÔI PHỤC] Nút Teleport XYZ và Toggle Auto XYZ
+TeleTab:CreateButton({
+	Name = "Teleport XYZ Ngay",
+	Callback = function()
+		if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+			LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(TARGET_POS)
+		end
+	end
+})
+TeleTab:CreateToggle({
+	Name = "Auto Teleport XYZ (Treo)",
+	CurrentValue = autoXYZ,
+	Callback = function(v)
+		autoXYZ = v
+		-- Không lưu save autoXYZ để tránh bị kẹt lần sau
+	end
+})
 
+TeleTab:CreateSection("Time Config")
+TeleTab:CreateToggle({
+	Name = "Auto TP xx:05 (Mỗi tiếng)",
+	CurrentValue = autoTimeTP,
+	Callback = function(v)
+		autoTimeTP = v
+		SaveData.autoTimeTP = v
+		Save()
+	end
+})
+
+-- === TAB 2: COMBAT (ĐÃ KHÔI PHỤC) ===
+local CombatTab = Window:CreateTab("Combat", 4483362458)
 local function getPlayers()
 	local t = {}
 	for _,p in pairs(Players:GetPlayers()) do
-		if p ~= LocalPlayer then
-			table.insert(t,p.Name)
-		end
+		if p ~= LocalPlayer then table.insert(t,p.Name) end
 	end
 	return t
 end
-
 local dropdown = CombatTab:CreateDropdown({
 	Name = "Chọn Player",
 	Options = getPlayers(),
 	Callback = function(v)
-		if v and v[1] then
-			targetPlayer = Players:FindFirstChild(v[1])
-		end
+		if v and v[1] then targetPlayer = Players:FindFirstChild(v[1]) end
 	end
 })
-
-CombatTab:CreateButton({
-	Name = "Refresh Player",
-	Callback = function()
-		dropdown:Refresh(getPlayers())
-	end
-})
-
+CombatTab:CreateButton({Name = "Refresh Player", Callback = function() dropdown:Refresh(getPlayers()) end})
 CombatTab:CreateToggle({
 	Name = "Auto TP Sau Lưng",
 	CurrentValue = autoPlayerTP,
 	Callback = function(v)
 		autoPlayerTP = v
-		SaveData.autoPlayerTP = v
-		Save()
+		-- Không lưu save combat để tránh lỗi
 	end
 })
 
-------------------------------------------------
--- TAB SERVER
-------------------------------------------------
+-- === TAB 3: SERVER (ĐÃ KHÔI PHỤC) ===
 local ServerTab = Window:CreateTab("Server", 4483362458)
-
-ServerTab:CreateButton({
-	Name = "Rejoin Server",
-	Callback = function()
-		QueueAutoLoad()
-		TeleportService:Teleport(game.PlaceId, LocalPlayer)
-	end
-})
-
-ServerTab:CreateButton({
-	Name = "Copy Server ID",
-	Callback = function()
-		setclipboard(game.JobId)
-	end
-})
-
-ServerTab:CreateInput({
-	Name = "Server ID",
-	PlaceholderText = "Dán JobId",
-	RemoveTextAfterFocusLost = false,
-	Callback = function(v)
-		inputServerId = v
-	end
-})
-
+ServerTab:CreateButton({Name = "Rejoin Server", Callback = function() QueueAutoLoad(); TeleportService:Teleport(game.PlaceId, LocalPlayer) end})
+ServerTab:CreateButton({Name = "Copy Server ID", Callback = function() setclipboard(game.JobId) end})
+ServerTab:CreateInput({Name = "Server ID", PlaceholderText = "JobId...", RemoveTextAfterFocusLost = false, Callback = function(v) inputServerId = v end})
 ServerTab:CreateButton({
 	Name = "Join Server ID",
 	Callback = function()
 		if inputServerId ~= "" then
 			QueueAutoLoad()
-			TeleportService:TeleportToPlaceInstance(
-				game.PlaceId,
-				inputServerId,
-				LocalPlayer
-			)
+			TeleportService:TeleportToPlaceInstance(game.PlaceId, inputServerId, LocalPlayer)
 		end
 	end
 })
 
 ServerTab:CreateToggle({
-	Name = "Auto Hop (Thường)",
+	Name = "Auto Hop (Thường - Luôn luôn)",
 	CurrentValue = autoSafeHop,
 	Callback = function(v)
 		autoSafeHop = v
@@ -333,7 +291,6 @@ ServerTab:CreateToggle({
 		Save()
 	end
 })
-
 ServerTab:CreateInput({
 	Name = "Hop Delay (giây)",
 	PlaceholderText = tostring(hopDelay),
@@ -345,55 +302,17 @@ ServerTab:CreateInput({
 	end
 })
 
-------------------------------------------------
--- TAB MISC
-------------------------------------------------
+-- === TAB 4: MISC ===
 local MiscTab = Window:CreateTab("Misc", 4483362458)
-
-MiscTab:CreateToggle({
-	Name = "Auto Load Khi Hop",
-	CurrentValue = SaveData.autoLoad,
-	Callback = function(v)
-		SaveData.autoLoad = v
-		Save()
-	end
-})
+MiscTab:CreateToggle({Name = "Auto Load Khi Hop", CurrentValue = SaveData.autoLoad, Callback = function(v) SaveData.autoLoad = v; Save() end})
 
 ------------------------------------------------
--- AUTO FEATURES (LOOPS)
+-- LOOPS (LOGIC)
 ------------------------------------------------
 
+-- 1. Auto TP Event Obby (05-10p)
 task.spawn(function()
-	while task.wait(0.1) do
-		if autoXYZ then
-			pcall(function()
-				if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-					LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(TARGET_POS)
-				end
-			end)
-		end
-	end
-end)
-
-task.spawn(function()
-	while task.wait(1) do
-		if autoTimeTP then
-			local t = os.date("*t")
-			if t.min == TARGET_MINUTE and t.hour ~= lastHour then
-				lastHour = t.hour
-				for i=1, TELEPORT_TIMES do
-					pcall(function()
-						LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(TARGET_POS)
-					end)
-					task.wait(1)
-				end
-			end
-		end
-	end
-end)
-
-task.spawn(function()
-	while task.wait(0.2) do 
+	while task.wait(0.5) do
 		if autoTPObbyTime then
 			local t = os.date("*t")
 			if t.min >= 5 and t.min <= 10 then
@@ -407,41 +326,61 @@ task.spawn(function()
 	end
 end)
 
-RunService.Heartbeat:Connect(function()
-	if autoPlayerTP and targetPlayer and targetPlayer.Character then
-		local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-		local thrp = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-		if hrp and thrp then
-			hrp.CFrame = thrp.CFrame * CFrame.new(0,0,-2)
-		end
-	end
-end)
-
-task.spawn(function()
-	while task.wait(hopDelay) do
-		if autoSafeHop and not isHopping then
-			safeHop()
-		end
-	end
-end)
-
+-- 2. Auto Hop Event (05-10p)
 task.spawn(function()
 	while task.wait(5) do 
 		if autoTimeHop then
 			local t = os.date("*t")
 			if t.min >= 5 and t.min <= 10 then
 				if not isHopping then
-					Rayfield:Notify({
-						Title = "⏰ Time Hop",
-						Content = "Đến giờ săn Event (05-10)!",
-						Duration = 3
-					})
+					Rayfield:Notify({Title = "⏰ Event Time", Content = "Đang tìm server trống...", Duration = 3})
 					safeHop()
 					task.wait(60) 
 				end
 			else
 				if t.min > 10 then isHopping = false end
 			end
+		end
+	end
+end)
+
+-- 3. Loop Hop Thường
+task.spawn(function()
+	while task.wait(hopDelay) do
+		if autoSafeHop and not isHopping then safeHop() end
+	end
+end)
+
+-- 4. TP xx:05
+task.spawn(function()
+	while task.wait(1) do
+		if autoTimeTP then
+			local t = os.date("*t")
+			if t.min == TARGET_MINUTE and t.hour ~= lastHour then
+				lastHour = t.hour
+				for i=1, TELEPORT_TIMES do
+					pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(TARGET_POS) end)
+					task.wait(1)
+				end
+			end
+		end
+	end
+end)
+
+-- 5. Combat TP
+RunService.Heartbeat:Connect(function()
+	if autoPlayerTP and targetPlayer and targetPlayer.Character then
+		local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+		local thrp = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+		if hrp and thrp then hrp.CFrame = thrp.CFrame * CFrame.new(0,0,-2) end
+	end
+end)
+
+-- 6. XYZ
+task.spawn(function()
+	while task.wait(0.5) do
+		if autoXYZ then
+			pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(TARGET_POS) end)
 		end
 	end
 end)
