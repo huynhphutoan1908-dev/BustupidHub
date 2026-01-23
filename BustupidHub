@@ -1,6 +1,6 @@
 repeat task.wait() until game:IsLoaded()
 
--- ==== AUTOLOAD URL (đúng link bạn gửi) ====
+-- AUTOLOAD URL
 local SCRIPT_URL = "https://raw.githubusercontent.com/huynhphutoan1908-dev/BustupidHub/main/BustupidHub.lua"
 
 -- Load Rayfield
@@ -15,7 +15,7 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
 ------------------------------------------------
--- AUTO SAVE
+-- AUTOSAVE
 ------------------------------------------------
 local SAVE_FILE = "BustupidHub_Save.json"
 
@@ -23,7 +23,7 @@ local SaveData = {
 	autoTimeTP = false,
 	autoPlayerTP = false,
 	autoServerHop = false,
-	hopDelay = 30,
+	hopDelay = 10,
 	autoLoad = true
 }
 
@@ -38,7 +38,7 @@ local function Save()
 end
 
 ------------------------------------------------
--- AUTOLOAD QUEUE
+-- QUEUE AUTOLOAD (REAL)
 ------------------------------------------------
 local function QueueAutoLoad()
 	if SaveData.autoLoad then
@@ -64,7 +64,7 @@ local TELEPORT_TIMES = 10
 local autoTimeTP = SaveData.autoTimeTP
 local autoPlayerTP = SaveData.autoPlayerTP
 local autoServerHop = SaveData.autoServerHop
-local hopDelay = SaveData.hopDelay or 30
+local hopDelay = SaveData.hopDelay
 local targetPlayer = nil
 local lastHour = -1
 local inputServerId = ""
@@ -75,7 +75,7 @@ local inputServerId = ""
 local Window = Rayfield:CreateWindow({
 	Name = "Bustupid Hub",
 	LoadingTitle = "Bustupid Hub",
-	LoadingSubtitle = "AutoLoad + Server Hop",
+	LoadingSubtitle = "FINAL AUTOLOAD",
 	KeySystem = false
 })
 
@@ -202,12 +202,9 @@ ServerTab:CreateInput({
 	PlaceholderText = tostring(hopDelay),
 	RemoveTextAfterFocusLost = false,
 	Callback = function(v)
-		local n = tonumber(v)
-		if n then
-			hopDelay = n
-			SaveData.hopDelay = hopDelay
-			Save()
-		end
+		hopDelay = tonumber(v) or hopDelay
+		SaveData.hopDelay = hopDelay
+		Save()
 	end
 })
 
@@ -226,7 +223,7 @@ MiscTab:CreateToggle({
 })
 
 ------------------------------------------------
--- AUTO TP LOOP
+-- LOOPS
 ------------------------------------------------
 task.spawn(function()
 	while task.wait(2) do
@@ -243,9 +240,6 @@ task.spawn(function()
 	end
 end)
 
-------------------------------------------------
--- AUTO COMBAT TP
-------------------------------------------------
 RunService.Heartbeat:Connect(function()
 	if autoPlayerTP and targetPlayer and targetPlayer.Character then
 		local hrp=LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -256,9 +250,6 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
-------------------------------------------------
--- AUTO SERVER HOP
-------------------------------------------------
 task.spawn(function()
 	while task.wait(1) do
 		if autoServerHop then
