@@ -1,14 +1,12 @@
 repeat task.wait() until game:IsLoaded()
 
 ------------------------------------------------
--- [FLUENT UI EDITION] BUSTUPID HUB | 10/10
+-- [FLUENT UI 10/10] BUSTUPID HUB | AUTO-SAVE FIXED
 ------------------------------------------------
 local SCRIPT_URL = "https://raw.githubusercontent.com/huynhphutoan1908-dev/BustupidHub/refs/heads/main/BustupidHub"
 
--- Load Fluent UI & Addons
+-- Load Fluent UI
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
 
 ------------------------------------------------
 -- SERVICES
@@ -28,7 +26,7 @@ local TARGET_CFRAME = CFrame.new(910, -16.7, -526)
 local TARGET_MINUTE = 5 
 local TELEPORT_TIMES = 10
 
--- Các biến cấu hình (Sẽ được SaveManager quản lý tự động)
+-- Các biến Runtime
 local Options = Fluent.Options
 local isHopping = false 
 local failCount = 0
@@ -39,6 +37,41 @@ local targetPlayer = nil
 local lastHour = -1
 local inputServerId = ""
 
+-- [AUTO SAVE SYSTEM] 
+-- File lưu cấu hình riêng biệt, không phụ thuộc vào Fluent SaveManager
+local SAVE_FILE = "BustupidHub_Fluent_Auto.json"
+
+local function SaveConfig()
+    -- Chỉ lưu những cài đặt an toàn và cần thiết
+    local data = {
+        AutoEventHop = Options.AutoEventHop.Value,
+        AutoAttack = Options.AutoAttack.Value,
+        AutoBehind = Options.AutoBehind.Value,
+        AutoHop = Options.AutoHop.Value,
+        HopDelay = Options.HopDelay.Value,
+        AntiAFK = Options.AntiAFK.Value,
+        AutoLoad = Options.AutoLoad.Value,
+        -- [AN TOÀN] Không lưu AutoTP/XYZ để tránh vào game bị bay lung tung
+    }
+    writefile(SAVE_FILE, HttpService:JSONEncode(data))
+end
+
+local function LoadConfig()
+    if isfile(SAVE_FILE) then
+        local success, result = pcall(function() return HttpService:JSONDecode(readfile(SAVE_FILE)) end)
+        if success then
+            -- Load lại các cài đặt cũ
+            if Options.AutoEventHop then Options.AutoEventHop:SetValue(result.AutoEventHop) end
+            if Options.AutoAttack then Options.AutoAttack:SetValue(result.AutoAttack) end
+            if Options.AutoBehind then Options.AutoBehind:SetValue(result.AutoBehind) end
+            if Options.AutoHop then Options.AutoHop:SetValue(result.AutoHop) end
+            if Options.HopDelay then Options.HopDelay:SetValue(result.HopDelay) end
+            if Options.AntiAFK then Options.AntiAFK:SetValue(result.AntiAFK) end
+            if Options.AutoLoad then Options.AutoLoad:SetValue(result.AutoLoad) end
+        end
+    end
+end
+
 ------------------------------------------------
 -- UI WINDOW SETUP
 ------------------------------------------------
@@ -47,9 +80,9 @@ local Window = Fluent:CreateWindow({
     SubTitle = "by HuynhToann",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
-    Acrylic = true, -- Hiệu ứng mờ nền (Blur) đẹp mắt
+    Acrylic = true, 
     Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl -- Phím tắt ẩn menu
+    MinimizeKey = Enum.KeyCode.LeftControl 
 })
 
 ------------------------------------------------
@@ -66,7 +99,7 @@ local Tabs = {
 -- LOGIC FUNCTIONS
 ------------------------------------------------
 local function QueueAutoLoad()
-    -- Fluent tự lưu config nên chỉ cần load lại script
+    if not Options.AutoLoad.Value then return end
     local nextCode = [[
         task.wait(5)
         repeat task.wait() until game:IsLoaded()
@@ -77,7 +110,7 @@ local function QueueAutoLoad()
     elseif fluxus and fluxus.queue_on_teleport then fluxus.queue_on_teleport(nextCode) end
 end
 
-local safeHop -- Forward declare
+local safeHop 
 
 TeleportService.TeleportInitFailed:Connect(function(player, result, errorMessage)
     if player == LocalPlayer then
@@ -99,7 +132,6 @@ end)
 safeHop = function()
     if isHopping then return end 
     isHopping = true
-    SaveManager:Save(1) -- Tự động lưu config trước khi hop
     QueueAutoLoad()
 
     Fluent:Notify({Title = "Server Hop", Content = "Scanning for servers...", Duration = 3})
@@ -157,8 +189,12 @@ end
 ------------------------------------------------
 local EventSection = Tabs.Event:AddSection("Event Configuration")
 
+-- Các Toggle quan trọng được gắn thêm Callback để SaveConfig()
 local ToggleEventTP = Tabs.Event:AddToggle("AutoEventTP", {Title = "Auto TP Event Obby (00-10m)", Default = false})
+ToggleEventTP:OnChanged(function() SaveConfig() end)
+
 local ToggleEventHop = Tabs.Event:AddToggle("AutoEventHop", {Title = "Auto Hop Event (00-10m)", Default = false})
+ToggleEventHop:OnChanged(function() SaveConfig() end)
 
 Tabs.Event:AddSection("Teleport Tools")
 Tabs.Event:AddButton({
@@ -183,7 +219,6 @@ local PlayerDropdown = Tabs.Combat:AddDropdown("TargetPlayer", {
     Default = 1,
 })
 
--- Hàm refresh player list
 local function RefreshPlayers()
     local t = {}
     for _,p in pairs(Players:GetPlayers()) do
@@ -200,7 +235,10 @@ PlayerDropdown:OnChanged(function(Value)
 end)
 
 local ToggleBehind = Tabs.Combat:AddToggle("AutoBehind", {Title = "Auto TP Behind", Default = false})
+ToggleBehind:OnChanged(function() SaveConfig() end)
+
 local ToggleAttack = Tabs.Combat:AddToggle("AutoAttack", {Title = "Auto Attack (Fast)", Default = false})
+ToggleAttack:OnChanged(function() SaveConfig() end)
 
 ------------------------------------------------
 -- TAB: SERVER
@@ -226,6 +264,8 @@ Tabs.Server:AddButton({
 
 Tabs.Server:AddSection("Hop Settings")
 local ToggleSafeHop = Tabs.Server:AddToggle("AutoHop", {Title = "Auto Hop (Always)", Default = false})
+ToggleSafeHop:OnChanged(function() SaveConfig() end)
+
 local SliderDelay = Tabs.Server:AddSlider("HopDelay", {
     Title = "Hop Delay (Seconds)",
     Description = "Time to wait before hopping again",
@@ -233,22 +273,25 @@ local SliderDelay = Tabs.Server:AddSlider("HopDelay", {
     Min = 5,
     Max = 60,
     Rounding = 0,
+    Callback = function(Value) SaveConfig() end
 })
 
 ------------------------------------------------
 -- TAB: MISC (Settings)
 ------------------------------------------------
 local ToggleAntiAFK = Tabs.Misc:AddToggle("AntiAFK", {Title = "Super Anti-AFK", Default = true})
+ToggleAntiAFK:OnChanged(function() SaveConfig() end)
 
--- Save Manager Setup (Tự động tạo file save/load)
-SaveManager:SetLibrary(Fluent)
-InterfaceManager:SetLibrary(Fluent)
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetFolder("BustupidHub_Fluent")
-SaveManager:BuildConfigSection(Tabs.Misc)
+local ToggleAutoLoad = Tabs.Misc:AddToggle("AutoLoad", {Title = "Auto Load Script on Hop", Default = true})
+ToggleAutoLoad:OnChanged(function() SaveConfig() end)
 
+------------------------------------------------
+-- INITIALIZATION
+------------------------------------------------
+-- Load cấu hình ngay khi bật UI
+LoadConfig()
 Window:SelectTab(1)
-Fluent:Notify({Title = "Loaded", Content = "Bustupid Hub | Fluent UI 10/10", Duration = 5})
+Fluent:Notify({Title = "Loaded", Content = "Bustupid Hub | Auto-Save Enabled", Duration = 5})
 
 ------------------------------------------------
 -- LOOPS (LOGIC)
