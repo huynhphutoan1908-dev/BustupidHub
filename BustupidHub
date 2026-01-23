@@ -1,0 +1,235 @@
+-- Load Rayfield
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+
+------------------------------------------------
+-- AUTO SAVE
+------------------------------------------------
+local SAVE_FILE = "Bustupid_Save.json"
+
+local SaveData = {
+	autoTimeTP = false,
+	autoPlayerTP = false,
+	autoServerHop = false,
+	hopDelay = 30,
+	autoLoad = true
+}
+
+if isfile(SAVE_FILE) then
+	pcall(function()
+		SaveData = HttpService:JSONDecode(readfile(SAVE_FILE))
+	end)
+end
+
+local function Save()
+	writefile(SAVE_FILE, HttpService:JSONEncode(SaveData))
+end
+
+------------------------------------------------
+-- CONFIG
+------------------------------------------------
+local TARGET_POS = Vector3.new(910, -16.7, -526)
+local TARGET_MINUTE = 5
+local TELEPORT_TIMES = 10
+local INTERVAL = 1
+local CHECK_DELAY = 2
+
+------------------------------------------------
+-- STATE
+------------------------------------------------
+local autoTimeTP = SaveData.autoTimeTP
+local autoPlayerTP = SaveData.autoPlayerTP
+local autoServerHop = SaveData.autoServerHop
+local hopDelay = SaveData.hopDelay
+local autoLoad = SaveData.autoLoad
+
+local lastHour = -1
+local targetPlayer = nil
+local inputServerId = ""
+
+------------------------------------------------
+-- WINDOW
+------------------------------------------------
+local Window = Rayfield:CreateWindow({
+	Name = "Bustupid Hub",
+	LoadingTitle = "Bustupid Hub",
+	LoadingSubtitle = "Auto Save + Server System",
+	KeySystem = false
+})
+
+------------------------------------------------
+-- TAB EVENT
+------------------------------------------------
+local TeleTab = Window:CreateTab("Event", 4483362458)
+
+TeleTab:CreateToggle({
+	Name = "Auto TP xx:05",
+	CurrentValue = autoTimeTP,
+	Callback = function(v)
+		autoTimeTP = v
+		SaveData.autoTimeTP = v
+		Save()
+	end
+})
+
+------------------------------------------------
+-- TAB COMBAT
+------------------------------------------------
+local PlayerTab = Window:CreateTab("Combat", 4483362458)
+
+local function getPlayers()
+	local t = {}
+	for _, p in pairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer then
+			table.insert(t, p.Name)
+		end
+	end
+	return t
+end
+
+local dropdown = PlayerTab:CreateDropdown({
+	Name = "Chọn Player",
+	Options = getPlayers(),
+	Callback = function(v)
+		targetPlayer = Players:FindFirstChild(v[1])
+	end
+})
+
+PlayerTab:CreateToggle({
+	Name = "Auto TP theo Player",
+	CurrentValue = autoPlayerTP,
+	Callback = function(v)
+		autoPlayerTP = v
+		SaveData.autoPlayerTP = v
+		Save()
+	end
+})
+
+------------------------------------------------
+-- TAB SERVER
+------------------------------------------------
+local ServerTab = Window:CreateTab("Server", 4483362458)
+
+ServerTab:CreateButton({
+	Name = "Rejoin Server",
+	Callback = function()
+		TeleportService:Teleport(game.PlaceId, LocalPlayer)
+	end
+})
+
+ServerTab:CreateButton({
+	Name = "Copy Server ID",
+	Callback = function()
+		setclipboard(game.JobId)
+		Rayfield:Notify({Title="Copied",Content="Đã copy Server ID"})
+	end
+})
+
+ServerTab:CreateButton({
+	Name = "Show Server ID",
+	Callback = function()
+		Rayfield:Notify({Title="Server ID",Content=game.JobId,Duration=8})
+	end
+})
+
+ServerTab:CreateInput({
+	Name = "Nhập Server ID",
+	PlaceholderText = "Dán JobId",
+	Callback = function(v)
+		inputServerId = v
+	end
+})
+
+ServerTab:CreateButton({
+	Name = "Join Server Theo ID",
+	Callback = function()
+		if inputServerId ~= "" then
+			TeleportService:TeleportToPlaceInstance(game.PlaceId, inputServerId, LocalPlayer)
+		end
+	end
+})
+
+ServerTab:CreateToggle({
+	Name = "Auto Server Hop",
+	CurrentValue = autoServerHop,
+	Callback = function(v)
+		autoServerHop = v
+		SaveData.autoServerHop = v
+		Save()
+	end
+})
+
+ServerTab:CreateInput({
+	Name = "Hop Delay (giây)",
+	PlaceholderText = "VD: 30",
+	Callback = function(v)
+		local n = tonumber(v)
+		if n then
+			hopDelay = n
+			SaveData.hopDelay = n
+			Save()
+		end
+	end
+})
+
+------------------------------------------------
+-- TAB MISC
+------------------------------------------------
+local MiscTab = Window:CreateTab("Misc", 4483362458)
+
+MiscTab:CreateToggle({
+	Name = "Auto Load Script Khi Vào Server",
+	CurrentValue = autoLoad,
+	Callback = function(v)
+		autoLoad = v
+		SaveData.autoLoad = v
+		Save()
+	end
+})
+
+------------------------------------------------
+-- AUTO SERVER HOP LOOP
+------------------------------------------------
+task.spawn(function()
+	while task.wait(1) do
+		if autoServerHop then
+			task.wait(hopDelay)
+			TeleportService:Teleport(game.PlaceId, LocalPlayer)
+		end
+	end
+end)
+
+------------------------------------------------
+-- AUTO TIME TP
+------------------------------------------------
+task.spawn(function()
+	while task.wait(CHECK_DELAY) do
+		if autoTimeTP then
+			local now = os.date("*t")
+			if now.min == TARGET_MINUTE and now.hour ~= lastHour then
+				lastHour = now.hour
+				for i=1,TELEPORT_TIMES do
+					LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(TARGET_POS)
+					task.wait(INTERVAL)
+				end
+			end
+		end
+	end
+end)
+
+------------------------------------------------
+-- AUTO PLAYER TP
+------------------------------------------------
+RunService.Heartbeat:Connect(function()
+	if autoPlayerTP and targetPlayer and targetPlayer.Character then
+		LocalPlayer.Character.HumanoidRootPart.CFrame =
+			targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0,0,-2)
+	end
+end)
