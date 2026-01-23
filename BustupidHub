@@ -1,7 +1,7 @@
 repeat task.wait() until game:IsLoaded()
 
 ------------------------------------------------
--- [10/10] OPTIMIZED VERSION - BUSTUPID HUB
+-- [ENGLISH EDITION] BUSTUPID HUB | by HuynhToann
 ------------------------------------------------
 local SCRIPT_URL = "https://raw.githubusercontent.com/huynhphutoan1908-dev/BustupidHub/refs/heads/main/BustupidHub"
 
@@ -16,7 +16,7 @@ local VirtualUser = game:GetService("VirtualUser")
 local LocalPlayer = Players.LocalPlayer
 
 ------------------------------------------------
--- LOAD UI
+-- UI LOAD
 ------------------------------------------------
 local success, Rayfield = pcall(function()
     return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
@@ -25,23 +25,23 @@ end)
 if not success then return end
 
 ------------------------------------------------
--- VARIABLES & CONFIG
+-- CONFIG & SAVE
 ------------------------------------------------
-local SAVE_FILE = "BustupidHub_Optimized.json" -- File save mới cho bản tối ưu
+local SAVE_FILE = "BustupidHub_Combat.json" -- Đổi tên file save mới
 
 local SaveData = {
     autoXYZ = false,
     autoTimeTP = false,
     autoPlayerTP = false,
+    autoAttack = false, -- [NEW] Lưu trạng thái Auto Attack
     autoSafeHop = false,
     autoTimeHop = false,    
     autoTPObbyTime = false, 
     autoAntiAFK = true,
-    hopDelay = 8,
+    hopDelay = 10, 
     autoLoad = true
 }
 
--- Load Data
 if isfile(SAVE_FILE) then
     pcall(function()
         local readData = HttpService:JSONDecode(readfile(SAVE_FILE))
@@ -51,20 +51,20 @@ if isfile(SAVE_FILE) then
     end)
 end
 
--- FORCE OFF (An toàn tuyệt đối)
+-- FORCE OFF (Safety)
 SaveData.autoXYZ = false
 SaveData.autoTPObbyTime = false
 SaveData.autoTimeTP = false
+-- SaveData.autoAttack = false -- Có thể bỏ comment dòng này nếu muốn tắt Auto Attack mỗi khi vào game
 
 local function Save()
     writefile(SAVE_FILE, HttpService:JSONEncode(SaveData))
 end
 
--- Queue Autoload
 local function QueueAutoLoad()
     if not SaveData.autoLoad then return end
     local nextCode = [[
-        task.wait(3)
+        task.wait(5)
         repeat task.wait() until game:IsLoaded()
         pcall(function() loadstring(game:HttpGet("]] .. SCRIPT_URL .. [["))() end)
     ]]
@@ -74,48 +74,49 @@ local function QueueAutoLoad()
 end
 
 ------------------------------------------------
--- GLOBAL STATE
+-- VARIABLES
 ------------------------------------------------
 local TARGET_POS = Vector3.new(910, -16.7, -526)
 local TARGET_CFRAME = CFrame.new(910, -16.7, -526)
-local TARGET_MINUTE = 5
+local TARGET_MINUTE = 5 
 local TELEPORT_TIMES = 10
 
--- Load Config Local
 local autoXYZ = false
 local autoTimeTP = false
 local autoPlayerTP = SaveData.autoPlayerTP
+local autoAttack = SaveData.autoAttack -- [NEW]
 local autoSafeHop = SaveData.autoSafeHop
 local autoTimeHop = SaveData.autoTimeHop 
 local autoTPObbyTime = false
 local autoAntiAFK = SaveData.autoAntiAFK
 local hopDelay = SaveData.hopDelay
 
--- Runtime Variables
 local targetPlayer = nil
 local lastHour = -1
 local inputServerId = ""
 local isHopping = false 
 local failCount = 0
-local lastHopTime = 0 -- Dùng cho Optimized Hop Loop
-
--- Shared State (Biến dùng chung giữa các luồng để tối ưu)
-local shared_IsEventTime = false -- Biến này sẽ được cập nhật mỗi giây 1 lần
+local lastHopTime = 0 
+local lastAFKAction = 0
+local shared_IsEventTime = false 
 
 ------------------------------------------------
--- HOP LOGIC (SMART & ANTI-772)
+-- SAFE HOP V2 (ANTI-CRASH LOGIC)
 ------------------------------------------------
 local safeHop 
 
 TeleportService.TeleportInitFailed:Connect(function(player, result, errorMessage)
     if player == LocalPlayer then
+        warn("TP Fail: " .. tostring(errorMessage))
+        task.wait(3) 
+        
         if isHopping or autoSafeHop or autoTimeHop then
-            Rayfield:Notify({Title = "⚠️ Retry", Content = "Lỗi kết nối (772). Thử lại...", Duration = 2})
-            task.wait(1)
-            isHopping = false 
             failCount = failCount + 1
-            if failCount > 3 then
+            isHopping = false
+            
+            if failCount > 2 then
                 failCount = 0
+                Rayfield:Notify({Title = "⚠️ Crash Prevent", Content = "Rejoining to prevent crash...", Duration = 3})
                 TeleportService:Teleport(game.PlaceId, LocalPlayer) 
             else
                 safeHop()
@@ -130,7 +131,7 @@ safeHop = function()
     Save()
     QueueAutoLoad()
 
-    Rayfield:Notify({Title = "🛡️ Hop", Content = "Đang tìm server ngon...", Duration = 2})
+    Rayfield:Notify({Title = "🛡️ Safe Hop", Content = "Scanning (Safe Mode)...", Duration = 2})
     
     local PlaceID = game.PlaceId
     local foundAnything = ""
@@ -141,7 +142,12 @@ safeHop = function()
         local success, result = pcall(function()
             return game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100' .. (foundAnything ~= "" and ("&cursor=" .. foundAnything) or ""))
         end)
-        if not success then return end
+        
+        if not success then 
+            warn("HTTP Error: Rate Limit")
+            return false 
+        end
+        
         Site = HttpService:JSONDecode(result)
         if Site.nextPageCursor and Site.nextPageCursor ~= "null" then foundAnything = Site.nextPageCursor end
         
@@ -153,45 +159,69 @@ safeHop = function()
                 table.insert(validServers, ID)
             end
         end
+        return true
     end
 
-    pcall(function() FetchServers(); if foundAnything ~= "" then task.wait(0.2); FetchServers() end end)
+    pcall(function() 
+        local try1 = FetchServers()
+        if not try1 then task.wait(2) end 
+        
+        if foundAnything ~= "" then 
+            task.wait(0.5)
+            FetchServers() 
+        end 
+    end)
     
     if #validServers > 0 then
         local randomID = validServers[math.random(1, #validServers)]
+        task.wait(math.random(15, 30) / 10) 
         TeleportService:TeleportToPlaceInstance(PlaceID, randomID, LocalPlayer)
-        task.delay(20, function() if isHopping then isHopping = false end end)
+        task.delay(30, function() if isHopping then isHopping = false end end)
     else
-        Rayfield:Notify({Title = "No Server", Content = "Rejoin...", Duration = 2})
+        Rayfield:Notify({Title = "No Server", Content = "Rejoining...", Duration = 2})
+        task.wait(1)
         TeleportService:Teleport(game.PlaceId, LocalPlayer)
         isHopping = false
     end
 end
 
+-- Anti-AFK Function
+local function PerformAntiAFK()
+    pcall(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new()) 
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.Jump = true
+        end
+    end)
+end
+
 ------------------------------------------------
--- OPTIMIZED LOOPS (CỐT LÕI 10/10)
+-- LOOPS
 ------------------------------------------------
 
--- [[ LUỒNG 1: SLOW LOOP (1s) ]] 
--- Chuyên xử lý logic thời gian, check giờ, check hop.
--- Giúp giảm tải CPU vì không phải check giờ liên tục.
+-- SLOW LOOP (1s)
 task.spawn(function()
     while task.wait(1) do
         local t = os.date("*t")
         
-        -- 1. Cập nhật trạng thái giờ Event cho Luồng Nhanh dùng
-        if t.min >= 5 and t.min <= 10 then
+        -- 1. Check Event (00-10)
+        if t.min >= 0 and t.min <= 10 then
             shared_IsEventTime = true
         else
             shared_IsEventTime = false
-            -- Reset hopping status khi hết giờ event để tránh kẹt
             if isHopping and autoTimeHop and t.min == 11 then isHopping = false end
         end
 
-        -- 2. Logic Auto TP mỗi tiếng (xx:05)
-        if autoTimeTP and t.min == TARGET_MINUTE and t.hour ~= lastHour then
+        -- 2. Anti-AFK (3 mins/time)
+        if autoAntiAFK and (tick() - lastAFKAction > 180) then
+            lastAFKAction = tick()
+            PerformAntiAFK()
+        end
+
+        -- 3. Auto TP xx:05
+        if autoTimeTP and t.min == 5 and t.hour ~= lastHour then
             lastHour = t.hour
-            -- Spawn một luồng nhỏ để TP 10 lần rồi tắt, không làm khựng luồng chính
             task.spawn(function()
                 for i=1, TELEPORT_TIMES do
                     pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(TARGET_POS) end)
@@ -200,16 +230,14 @@ task.spawn(function()
             end)
         end
 
-        -- 3. Logic Auto Hop Event (xx:05 - xx:10)
-        if autoTimeHop and shared_IsEventTime then
-            if not isHopping then
-                Rayfield:Notify({Title = "⏰ Event", Content = "Đổi server săn event...", Duration = 3})
-                safeHop()
-                task.wait(60) -- Chờ lâu để tránh spam hop liên tục
-            end
+        -- 4. Auto Hop Event
+        if autoTimeHop and shared_IsEventTime and not isHopping then
+             Rayfield:Notify({Title = "⏰ Event (00-10)", Content = "Finding server...", Duration = 3})
+             safeHop()
+             task.wait(60) 
         end
 
-        -- 4. Logic Auto Hop Thường (Dùng tick() để tính giờ thay vì sleep)
+        -- 5. Auto Hop Normal
         if autoSafeHop and not isHopping then
             if tick() - lastHopTime >= hopDelay then
                 lastHopTime = tick()
@@ -219,24 +247,37 @@ task.spawn(function()
     end
 end)
 
--- [[ LUỒNG 2: FAST LOOP (0.2s) ]]
--- Chuyên xử lý việc "Spam Vị Trí" để giữ nhân vật không rơi.
--- Chỉ làm việc nhẹ -> Cực mượt.
+-- FAST LOOP (0.2s)
 task.spawn(function()
     while task.wait(0.2) do
-        -- Nếu đang bật XYZ thì spam vị trí
         if autoXYZ then
             pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = TARGET_CFRAME end)
-        
-        -- Nếu đang bật Auto Event VÀ đang trong giờ Event (check từ luồng chậm)
         elseif autoTPObbyTime and shared_IsEventTime then
             pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = TARGET_CFRAME end)
         end
     end
 end)
 
--- [[ LUỒNG 3: COMBAT (Heartbeat) ]]
--- Luôn chạy max tốc độ khung hình cho Combat
+-- [NEW] AUTO ATTACK LOOP (0.1s - Fast)
+task.spawn(function()
+    while task.wait(0.1) do
+        if autoAttack then
+            pcall(function()
+                -- Cách 1: Kích hoạt Tool (Vũ khí)
+                local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+                if tool then
+                    tool:Activate()
+                end
+                
+                -- Cách 2: Click chuột ảo (Dành cho game không dùng Tool)
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton1(Vector2.new())
+            end)
+        end
+    end
+end)
+
+-- COMBAT LOOP (TP BEHIND)
 RunService.Heartbeat:Connect(function()
     if autoPlayerTP and targetPlayer and targetPlayer.Character then
         local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -245,88 +286,46 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- [[ LUỒNG 4: ANTI-AFK ]]
+-- PASSIVE ANTI-AFK
 LocalPlayer.Idled:Connect(function()
-    if autoAntiAFK then
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new())
-        Rayfield:Notify({Title = "💤 Anti-AFK", Content = "Active!", Duration = 2})
-    end
+    if autoAntiAFK then PerformAntiAFK() end
 end)
 
 ------------------------------------------------
 -- UI SETUP
 ------------------------------------------------
 local Window = Rayfield:CreateWindow({
-    Name = "Bustupid Hub",
-    LoadingTitle = "PERFORMANCE 10/10",
-    LoadingSubtitle = "Optimized Core",
+    Name = "Bustupid Hub | by HuynhToann",
+    LoadingTitle = "ANTI-CRASH + AUTO ATTACK",
+    LoadingSubtitle = "by HuynhToann",
     KeySystem = false
 })
 
 local TeleTab = Window:CreateTab("Event", 4483362458)
 TeleTab:CreateSection("Auto Event Config")
-
-TeleTab:CreateToggle({
-    Name = "Auto TP Event Obby (05-10p)", 
-    CurrentValue = false, 
-    Callback = function(v)
-        autoTPObbyTime = v
-    end
-})
-
-TeleTab:CreateToggle({
-    Name = "Auto Hop (Phút 05-10)",
-    CurrentValue = autoTimeHop,
-    Callback = function(v)
-        autoTimeHop = v
-        SaveData.autoTimeHop = v
-        Save()
-    end
-})
+TeleTab:CreateToggle({Name = "Auto TP Event Obby (00-10m)", CurrentValue = false, Callback = function(v) autoTPObbyTime = v end})
+TeleTab:CreateToggle({Name = "Auto Hop (00-10m)", CurrentValue = autoTimeHop, Callback = function(v) autoTimeHop = v; SaveData.autoTimeHop = v; Save() end})
 
 TeleTab:CreateSection("Teleport Config")
-TeleTab:CreateButton({
-    Name = "Teleport XYZ Ngay",
-    Callback = function()
-        pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = TARGET_CFRAME end)
-    end
-})
-TeleTab:CreateToggle({
-    Name = "Auto Teleport XYZ (Treo)",
-    CurrentValue = autoXYZ,
-    Callback = function(v) autoXYZ = v end
-})
+TeleTab:CreateButton({Name = "Teleport XYZ Now", Callback = function() pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = TARGET_CFRAME end) end})
+TeleTab:CreateToggle({Name = "Auto Teleport XYZ (AFK)", CurrentValue = autoXYZ, Callback = function(v) autoXYZ = v end})
 
 TeleTab:CreateSection("Time Config")
-TeleTab:CreateToggle({
-    Name = "Auto TP xx:05 (Mỗi tiếng)",
-    CurrentValue = false,
-    Callback = function(v) autoTimeTP = v end
-})
+TeleTab:CreateToggle({Name = "Auto TP xx:05 (Hourly)", CurrentValue = false, Callback = function(v) autoTimeTP = v end})
 
 local CombatTab = Window:CreateTab("Combat", 4483362458)
-local function getPlayers()
-    local t = {}
-    for _,p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then table.insert(t,p.Name) end
-    end
-    return t
-end
-local dropdown = CombatTab:CreateDropdown({
-    Name = "Chọn Player",
-    Options = getPlayers(),
-    Callback = function(v)
-        if v and v[1] then targetPlayer = Players:FindFirstChild(v[1]) end
-    end
-})
+local function getPlayers() local t = {}; for _,p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then table.insert(t,p.Name) end end; return t end
+local dropdown = CombatTab:CreateDropdown({Name = "Select Player", Options = getPlayers(), Callback = function(v) if v and v[1] then targetPlayer = Players:FindFirstChild(v[1]) end end})
 CombatTab:CreateButton({Name = "Refresh Player", Callback = function() dropdown:Refresh(getPlayers()) end})
+CombatTab:CreateToggle({Name = "Auto TP Behind", CurrentValue = autoPlayerTP, Callback = function(v) autoPlayerTP = v; SaveData.autoPlayerTP = v; Save() end})
+
+-- [NEW] AUTO ATTACK TOGGLE
 CombatTab:CreateToggle({
-    Name = "Auto TP Sau Lưng",
-    CurrentValue = autoPlayerTP,
+    Name = "Auto Attack (Fast)",
+    CurrentValue = autoAttack,
     Callback = function(v)
-        autoPlayerTP = v
-        SaveData.autoPlayerTP = v
+        autoAttack = v
+        SaveData.autoAttack = v
         Save()
     end
 })
@@ -337,35 +336,10 @@ ServerTab:CreateButton({Name = "Copy Server ID", Callback = function() setclipbo
 ServerTab:CreateInput({Name = "Server ID", PlaceholderText = "JobId...", RemoveTextAfterFocusLost = false, Callback = function(v) inputServerId = v end})
 ServerTab:CreateButton({Name = "Join Server ID", Callback = function() if inputServerId ~= "" then QueueAutoLoad(); TeleportService:TeleportToPlaceInstance(game.PlaceId, inputServerId, LocalPlayer) end end})
 
-ServerTab:CreateToggle({
-    Name = "Auto Hop (Thường - Luôn luôn)",
-    CurrentValue = autoSafeHop,
-    Callback = function(v)
-        autoSafeHop = v
-        SaveData.autoSafeHop = v
-        Save()
-    end
-})
-ServerTab:CreateInput({
-    Name = "Hop Delay (giây)",
-    PlaceholderText = tostring(hopDelay),
-    RemoveTextAfterFocusLost = false,
-    Callback = function(v)
-        hopDelay = tonumber(v) or hopDelay
-        SaveData.hopDelay = hopDelay
-        Save()
-    end
-})
+ServerTab:CreateToggle({Name = "Auto Hop (Always)", CurrentValue = autoSafeHop, Callback = function(v) autoSafeHop = v; SaveData.autoSafeHop = v; Save() end})
+ServerTab:CreateInput({Name = "Hop Delay (s) - Rec: >10s", PlaceholderText = tostring(hopDelay), RemoveTextAfterFocusLost = false, Callback = function(v) hopDelay = tonumber(v) or hopDelay; SaveData.hopDelay = hopDelay; Save() end})
 
 local MiscTab = Window:CreateTab("Misc", 4483362458)
-MiscTab:CreateSection("Tiện Ích")
-MiscTab:CreateToggle({
-    Name = "Anti-AFK (Tự Click)",
-    CurrentValue = autoAntiAFK,
-    Callback = function(v)
-        autoAntiAFK = v
-        SaveData.autoAntiAFK = v
-        Save()
-    end
-})
-MiscTab:CreateToggle({Name = "Auto Load Khi Hop", CurrentValue = SaveData.autoLoad, Callback = function(v) SaveData.autoLoad = v; Save() end})
+MiscTab:CreateSection("Utilities")
+MiscTab:CreateToggle({Name = "Super Anti-AFK (Dual Protection)", CurrentValue = autoAntiAFK, Callback = function(v) autoAntiAFK = v; SaveData.autoAntiAFK = v; Save() end})
+MiscTab:CreateToggle({Name = "Auto Load on Hop", CurrentValue = SaveData.autoLoad, Callback = function(v) SaveData.autoLoad = v; Save() end})
