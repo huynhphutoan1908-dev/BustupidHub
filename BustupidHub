@@ -1,29 +1,38 @@
 repeat task.wait() until game:IsLoaded()
 
 ------------------------------------------------
--- [CUSTOM MODE] BUSTUPID HUB | AUTO ATTACK OFF
+-- [FIX MULTI-LOAD] BUSTUPID HUB | ANTI-DUPLICATE
 ------------------------------------------------
+
+-- [[ 🛑 KHÓA CHỐNG LOAD 2 LẦN 🛑 ]]
+if getgenv().BustupidHub_Loaded then 
+    warn("Script đã chạy rồi, bỏ qua lần load này!")
+    return 
+end
+getgenv().BustupidHub_Loaded = true
+------------------------------------------------
+
 local SCRIPT_URL = "https://raw.githubusercontent.com/huynhphutoan1908-dev/BustupidHub/refs/heads/main/BustupidHub"
 
 ------------------------------------------------
--- [[ ⚙️ CÀI ĐẶT MẶC ĐỊNH ⚙️ ]]
+-- [[ ⚙️ CÀI ĐẶT MẶC ĐỊNH (CUSTOM MODE) ⚙️ ]]
 ------------------------------------------------
 local UserSettings = {
     -- [COMBAT]
-    AutoAttack_Fast   = false,  -- [ĐÃ TẮT] Theo yêu cầu của ông
-    AutoTP_Death      = true,   -- [BẬT SẴN] Chết là tự về
-    AntiVoid_Death    = true,   -- [BẬT SẴN] Chống rớt vực
-    AutoTP_Behind     = false,  -- Tắt (Đỡ rối)
+    AutoAttack_Fast   = false,  -- [TẮT] (Theo yêu cầu cũ)
+    AutoTP_Death      = true,   -- [BẬT] Chết tự về
+    AntiVoid_Death    = true,   -- [BẬT] Chống rớt vực
+    AutoTP_Behind     = false,  -- [TẮT]
 
     -- [EVENT]
-    AutoTP_Obby_Event = true,   -- [BẬT SẴN] Tự bay Event
-    AutoHop_Event     = true,   -- [BẬT SẴN] Tự Hop Event
+    AutoTP_Obby_Event = true,   -- [BẬT] Tự bay Event
+    AutoHop_Event     = true,   -- [BẬT] Tự Hop Event
     
     -- [SERVER]
     AutoHop_Normal    = false,  
-    AutoAntiAFK       = true,   -- [BẬT SẴN]
+    AutoAntiAFK       = true,   
     HopDelay          = 15,     
-    AutoLoadScript    = true    
+    AutoLoadScript    = true    -- [LƯU Ý] Nếu bạn để script trong AutoExec thì sửa dòng này thành FALSE nhé
 }
 ------------------------------------------------
 
@@ -79,8 +88,13 @@ local lastDeathPosition = nil
 local function QueueAutoLoad()
     if not UserSettings.AutoLoadScript then return end
     local nextCode = [[
+        -- Chờ game load hẳn rồi mới chạy để tránh conflict
         task.wait(5)
         repeat task.wait() until game:IsLoaded()
+        
+        -- Kiểm tra lại lần nữa ở server mới
+        if getgenv().BustupidHub_Loaded then return end
+        
         pcall(function() loadstring(game:HttpGet("]] .. SCRIPT_URL .. [["))() end)
     ]]
     if queue_on_teleport then queue_on_teleport(nextCode)
@@ -99,7 +113,6 @@ local function OnCharacterAdded(char)
             
             local hrp = char:WaitForChild("HumanoidRootPart", 10)
             if hrp then
-                -- Spam TP 3 lần để dính vị trí
                 for i = 1, 3 do
                     hrp.CFrame = lastDeathPosition
                     task.wait(0.1) 
@@ -301,8 +314,8 @@ end)
 ------------------------------------------------
 local Window = Rayfield:CreateWindow({
     Name = "Bustupid Hub | by HuynhToann",
-    LoadingTitle = "READY",
-    LoadingSubtitle = "Auto Attack: OFF | Others: ON",
+    LoadingTitle = "ONE LOAD ONLY",
+    LoadingSubtitle = "Fix 2-3 times loading",
     KeySystem = false
 })
 
@@ -364,4 +377,4 @@ MiscTab:CreateSection("Utilities")
 MiscTab:CreateToggle({Name = "Super Anti-AFK (Dual Protection)", CurrentValue = autoAntiAFK, Callback = function(v) autoAntiAFK = v end})
 MiscTab:CreateToggle({Name = "Auto Load on Hop", CurrentValue = UserSettings.AutoLoadScript, Callback = function(v) UserSettings.AutoLoadScript = v end})
 
-Rayfield:Notify({Title = "Setup Complete", Content = "Auto Attack is OFF. Others are ON.", Duration = 5})
+Rayfield:Notify({Title = "Stable", Content = "Anti-Duplicate Enabled", Duration = 5})
