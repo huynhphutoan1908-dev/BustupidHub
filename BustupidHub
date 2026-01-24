@@ -1,1 +1,367 @@
+repeat task.wait() until game:IsLoaded()
 
+------------------------------------------------
+-- [CUSTOM MODE] BUSTUPID HUB | AUTO ATTACK OFF
+------------------------------------------------
+local SCRIPT_URL = "https://raw.githubusercontent.com/huynhphutoan1908-dev/BustupidHub/refs/heads/main/BustupidHub"
+
+------------------------------------------------
+-- [[ ⚙️ CÀI ĐẶT MẶC ĐỊNH ⚙️ ]]
+------------------------------------------------
+local UserSettings = {
+    -- [COMBAT]
+    AutoAttack_Fast   = false,  -- [ĐÃ TẮT] Theo yêu cầu của ông
+    AutoTP_Death      = true,   -- [BẬT SẴN] Chết là tự về
+    AntiVoid_Death    = true,   -- [BẬT SẴN] Chống rớt vực
+    AutoTP_Behind     = false,  -- Tắt (Đỡ rối)
+
+    -- [EVENT]
+    AutoTP_Obby_Event = true,   -- [BẬT SẴN] Tự bay Event
+    AutoHop_Event     = true,   -- [BẬT SẴN] Tự Hop Event
+    
+    -- [SERVER]
+    AutoHop_Normal    = false,  
+    AutoAntiAFK       = true,   -- [BẬT SẴN]
+    HopDelay          = 15,     
+    AutoLoadScript    = true    
+}
+------------------------------------------------
+
+------------------------------------------------
+-- SERVICES
+------------------------------------------------
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local VirtualUser = game:GetService("VirtualUser")
+local LocalPlayer = Players.LocalPlayer
+
+------------------------------------------------
+-- UI LOAD
+------------------------------------------------
+local success, Rayfield = pcall(function()
+    return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+end)
+
+if not success then return end
+
+------------------------------------------------
+-- SYSTEM VARIABLES
+------------------------------------------------
+local TARGET_POS = Vector3.new(910, -16.7, -526)
+local TARGET_CFRAME = CFrame.new(910, -16.7, -526)
+local TELEPORT_TIMES = 10
+
+-- Load Config
+local autoDeathTP = UserSettings.AutoTP_Death
+local antiVoid = UserSettings.AntiVoid_Death
+local autoXYZ = false 
+local autoTimeTP = false 
+local autoPlayerTP = UserSettings.AutoTP_Behind
+local autoSafeHop = UserSettings.AutoHop_Normal
+local autoTimeHop = UserSettings.AutoHop_Event
+local autoTPObbyTime = UserSettings.AutoTP_Obby_Event
+local autoAntiAFK = UserSettings.AutoAntiAFK
+local autoAttack = UserSettings.AutoAttack_Fast
+local hopDelay = UserSettings.HopDelay
+
+local targetPlayer = nil
+local lastHour = -1
+local inputServerId = ""
+local isHopping = false 
+local failCount = 0
+local lastHopTime = 0 
+local lastAFKAction = 0
+local shared_IsEventTime = false 
+local lastDeathPosition = nil 
+
+local function QueueAutoLoad()
+    if not UserSettings.AutoLoadScript then return end
+    local nextCode = [[
+        task.wait(5)
+        repeat task.wait() until game:IsLoaded()
+        pcall(function() loadstring(game:HttpGet("]] .. SCRIPT_URL .. [["))() end)
+    ]]
+    if queue_on_teleport then queue_on_teleport(nextCode)
+    elseif syn and syn.queue_on_teleport then syn.queue_on_teleport(nextCode)
+    elseif fluxus and fluxus.queue_on_teleport then fluxus.queue_on_teleport(nextCode) end
+end
+
+------------------------------------------------
+-- SMART DEATH TP (1.5s DELAY + 3x SPAM)
+------------------------------------------------
+local function OnCharacterAdded(char)
+    if autoDeathTP and lastDeathPosition then
+        task.spawn(function()
+            Rayfield:Notify({Title = "♻️ Loading...", Content = "Wait 1.5s...", Duration = 1.5})
+            task.wait(1.5) 
+            
+            local hrp = char:WaitForChild("HumanoidRootPart", 10)
+            if hrp then
+                -- Spam TP 3 lần để dính vị trí
+                for i = 1, 3 do
+                    hrp.CFrame = lastDeathPosition
+                    task.wait(0.1) 
+                end
+                lastDeathPosition = nil 
+            end
+        end)
+    end
+
+    local hum = char:WaitForChild("Humanoid", 10)
+    if hum then
+        hum.Died:Connect(function()
+            if autoDeathTP and char:FindFirstChild("HumanoidRootPart") then
+                local currentPos = char.HumanoidRootPart.CFrame
+                if antiVoid and currentPos.Y < -20 then
+                     lastDeathPosition = nil
+                else
+                     lastDeathPosition = currentPos
+                end
+            end
+        end)
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
+if LocalPlayer.Character then OnCharacterAdded(LocalPlayer.Character) end
+
+------------------------------------------------
+-- SAFE HOP V2
+------------------------------------------------
+local safeHop 
+
+TeleportService.TeleportInitFailed:Connect(function(player, result, errorMessage)
+    if player == LocalPlayer then
+        warn("TP Fail: " .. tostring(errorMessage))
+        task.wait(3) 
+        if isHopping or autoSafeHop or autoTimeHop then
+            failCount = failCount + 1
+            isHopping = false
+            if failCount > 2 then
+                failCount = 0
+                TeleportService:Teleport(game.PlaceId, LocalPlayer) 
+            else
+                safeHop()
+            end
+        end
+    end
+end)
+
+safeHop = function()
+    if isHopping then return end 
+    isHopping = true
+    QueueAutoLoad()
+
+    Rayfield:Notify({Title = "🛡️ Safe Hop", Content = "Scanning...", Duration = 2})
+    
+    local PlaceID = game.PlaceId
+    local foundAnything = ""
+    local validServers = {} 
+    
+    local function FetchServers()
+        local Site;
+        local success, result = pcall(function()
+            return game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100' .. (foundAnything ~= "" and ("&cursor=" .. foundAnything) or ""))
+        end)
+        if not success then return false end
+        Site = HttpService:JSONDecode(result)
+        if Site.nextPageCursor and Site.nextPageCursor ~= "null" then foundAnything = Site.nextPageCursor end
+        for i,v in pairs(Site.data) do
+            local ID = tostring(v.id)
+            local max = tonumber(v.maxPlayers)
+            local playing = tonumber(v.playing)
+            if (max - playing >= 2) and ID ~= game.JobId then
+                table.insert(validServers, ID)
+            end
+        end
+        return true
+    end
+
+    pcall(function() 
+        local try1 = FetchServers()
+        if not try1 then task.wait(2) end 
+        if foundAnything ~= "" then task.wait(0.5); FetchServers() end 
+    end)
+    
+    if #validServers > 0 then
+        local randomID = validServers[math.random(1, #validServers)]
+        task.wait(math.random(15, 30) / 10) 
+        TeleportService:TeleportToPlaceInstance(PlaceID, randomID, LocalPlayer)
+        task.delay(30, function() if isHopping then isHopping = false end end)
+    else
+        Rayfield:Notify({Title = "No Server", Content = "Rejoining...", Duration = 2})
+        task.wait(1)
+        TeleportService:Teleport(game.PlaceId, LocalPlayer)
+        isHopping = false
+    end
+end
+
+local function PerformAntiAFK()
+    pcall(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new()) 
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.Jump = true
+        end
+    end)
+end
+
+------------------------------------------------
+-- LOOPS
+------------------------------------------------
+
+-- SLOW LOOP
+task.spawn(function()
+    task.wait(5) 
+
+    while task.wait(1) do
+        local t = os.date("*t")
+        
+        if t.min >= 0 and t.min <= 10 then
+            shared_IsEventTime = true
+        else
+            shared_IsEventTime = false
+            if isHopping and autoTimeHop and t.min == 11 then isHopping = false end
+        end
+
+        if autoAntiAFK and (tick() - lastAFKAction > 180) then
+            lastAFKAction = tick()
+            PerformAntiAFK()
+        end
+
+        if autoTimeTP and t.min == 5 and t.hour ~= lastHour then
+            lastHour = t.hour
+            task.spawn(function()
+                for i=1, TELEPORT_TIMES do
+                    pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(TARGET_POS) end)
+                    task.wait(1)
+                end
+            end)
+        end
+
+        if autoTimeHop and shared_IsEventTime and not isHopping then
+             Rayfield:Notify({Title = "⏰ Event (00-10)", Content = "Wait 5s then Hop...", Duration = 3})
+             task.wait(5) 
+             if autoTimeHop and shared_IsEventTime then
+                 safeHop()
+             end
+        end
+
+        if autoSafeHop and not isHopping then
+            if tick() - lastHopTime >= hopDelay then
+                lastHopTime = tick()
+                safeHop()
+            end
+        end
+    end
+end)
+
+-- FAST LOOP
+task.spawn(function()
+    while task.wait(0.2) do
+        if autoXYZ then
+            pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = TARGET_CFRAME end)
+        elseif autoTPObbyTime and shared_IsEventTime then
+            pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = TARGET_CFRAME end)
+        end
+    end
+end)
+
+-- AUTO ATTACK
+task.spawn(function()
+    while task.wait(0.1) do
+        if autoAttack then
+            pcall(function()
+                local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+                if tool then tool:Activate() end
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton1(Vector2.new())
+            end)
+        end
+    end
+end)
+
+-- COMBAT TP
+RunService.Heartbeat:Connect(function()
+    if autoPlayerTP and targetPlayer and targetPlayer.Character then
+        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local thrp = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if hrp and thrp then hrp.CFrame = thrp.CFrame * CFrame.new(0,0,-2) end
+    end
+end)
+
+LocalPlayer.Idled:Connect(function()
+    if autoAntiAFK then PerformAntiAFK() end
+end)
+
+------------------------------------------------
+-- UI SETUP
+------------------------------------------------
+local Window = Rayfield:CreateWindow({
+    Name = "Bustupid Hub | by HuynhToann",
+    LoadingTitle = "READY",
+    LoadingSubtitle = "Auto Attack: OFF | Others: ON",
+    KeySystem = false
+})
+
+local TeleTab = Window:CreateTab("Event", 4483362458)
+TeleTab:CreateSection("Auto Event Config")
+
+TeleTab:CreateToggle({
+    Name = "Auto TP Event Obby (00-10m)", 
+    CurrentValue = autoTPObbyTime, -- BẬT SẴN
+    Callback = function(v) autoTPObbyTime = v end
+})
+
+TeleTab:CreateToggle({
+    Name = "Auto Hop (00-10m)", 
+    CurrentValue = autoTimeHop, -- BẬT SẴN
+    Callback = function(v) autoTimeHop = v end
+})
+
+TeleTab:CreateSection("Teleport Config")
+TeleTab:CreateButton({Name = "Teleport XYZ Now", Callback = function() pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = TARGET_CFRAME end) end})
+TeleTab:CreateToggle({Name = "Auto Teleport XYZ (AFK)", CurrentValue = autoXYZ, Callback = function(v) autoXYZ = v end})
+
+TeleTab:CreateSection("Time Config")
+TeleTab:CreateToggle({Name = "Auto TP xx:05 (Hourly)", CurrentValue = false, Callback = function(v) autoTimeTP = v end})
+
+local CombatTab = Window:CreateTab("Combat", 4483362458)
+local function getPlayers() local t = {}; for _,p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then table.insert(t,p.Name) end end; return t end
+local dropdown = CombatTab:CreateDropdown({Name = "Select Player", Options = getPlayers(), Callback = function(v) if v and v[1] then targetPlayer = Players:FindFirstChild(v[1]) end end})
+CombatTab:CreateButton({Name = "Refresh Player", Callback = function() dropdown:Refresh(getPlayers()) end})
+
+CombatTab:CreateToggle({
+    Name = "Auto TP Behind", 
+    CurrentValue = autoPlayerTP, 
+    Callback = function(v) autoPlayerTP = v end
+})
+
+CombatTab:CreateToggle({
+    Name = "Auto Attack (Fast)",
+    CurrentValue = autoAttack, -- TẮT (FALSE)
+    Callback = function(v) autoAttack = v end
+})
+
+CombatTab:CreateToggle({
+    Name = "Auto TP Back On Death", 
+    CurrentValue = autoDeathTP, -- BẬT SẴN
+    Callback = function(v) autoDeathTP = v end
+})
+
+local ServerTab = Window:CreateTab("Server", 4483362458)
+ServerTab:CreateButton({Name = "Rejoin Server", Callback = function() QueueAutoLoad(); TeleportService:Teleport(game.PlaceId, LocalPlayer) end})
+ServerTab:CreateButton({Name = "Copy Server ID", Callback = function() setclipboard(game.JobId) end})
+ServerTab:CreateInput({Name = "Server ID", PlaceholderText = "JobId...", RemoveTextAfterFocusLost = false, Callback = function(v) inputServerId = v end})
+ServerTab:CreateButton({Name = "Join Server ID", Callback = function() if inputServerId ~= "" then QueueAutoLoad(); TeleportService:TeleportToPlaceInstance(game.PlaceId, inputServerId, LocalPlayer) end end})
+ServerTab:CreateToggle({Name = "Auto Hop (Always)", CurrentValue = autoSafeHop, Callback = function(v) autoSafeHop = v end})
+ServerTab:CreateInput({Name = "Hop Delay (s)", PlaceholderText = tostring(hopDelay), RemoveTextAfterFocusLost = false, Callback = function(v) hopDelay = tonumber(v) or hopDelay end})
+
+local MiscTab = Window:CreateTab("Misc", 4483362458)
+MiscTab:CreateSection("Utilities")
+MiscTab:CreateToggle({Name = "Super Anti-AFK (Dual Protection)", CurrentValue = autoAntiAFK, Callback = function(v) autoAntiAFK = v end})
+MiscTab:CreateToggle({Name = "Auto Load on Hop", CurrentValue = UserSettings.AutoLoadScript, Callback = function(v) UserSettings.AutoLoadScript = v end})
+
+Rayfield:Notify({Title = "Setup Complete", Content = "Auto Attack is OFF. Others are ON.", Duration = 5})
