@@ -25,8 +25,8 @@ local UserSettings = {
     AutoTP_Behind     = false,  -- [TẮT]
 
     -- [EVENT]
-    AutoTP_Obby_Event = true,   -- [BẬT] Tự bay Event
-    AutoHop_Event     = true,   -- [BẬT] Tự Hop Event
+    AutoTP_Obby_Event = false,   -- [BẬT] Tự bay Event
+    AutoHop_Event     = false,   -- [BẬT] Tự Hop Event
     
     -- [SERVER]
     AutoHop_Normal    = false,  
@@ -56,10 +56,11 @@ end)
 if not success then return end
 
 ------------------------------------------------
--- SYSTEM VARIABLES
+-- SYSTEM VARIABLES (UPDATED)
 ------------------------------------------------
-local TARGET_POS = Vector3.new(910, -16.7, -526)
-local TARGET_CFRAME = CFrame.new(910, -16.7, -526)
+-- Tọa độ mới cập nhật theo yêu cầu
+local TARGET_POS = Vector3.new(433.1, -12.7, -340.6)
+local TARGET_CFRAME = CFrame.new(433.1, -12.7, -340.6)
 local TELEPORT_TIMES = 10
 
 -- Load Config
@@ -128,9 +129,9 @@ local function OnCharacterAdded(char)
             if autoDeathTP and char:FindFirstChild("HumanoidRootPart") then
                 local currentPos = char.HumanoidRootPart.CFrame
                 if antiVoid and currentPos.Y < -20 then
-                     lastDeathPosition = nil
+                      lastDeathPosition = nil
                 else
-                     lastDeathPosition = currentPos
+                      lastDeathPosition = currentPos
                 end
             end
         end)
@@ -271,7 +272,7 @@ task.spawn(function()
     end
 end)
 
--- FAST LOOP
+-- FAST LOOP (AUTO TP)
 task.spawn(function()
     while task.wait(0.2) do
         if autoXYZ then
@@ -377,4 +378,4 @@ MiscTab:CreateSection("Utilities")
 MiscTab:CreateToggle({Name = "Super Anti-AFK (Dual Protection)", CurrentValue = autoAntiAFK, Callback = function(v) autoAntiAFK = v end})
 MiscTab:CreateToggle({Name = "Auto Load on Hop", CurrentValue = UserSettings.AutoLoadScript, Callback = function(v) UserSettings.AutoLoadScript = v end})
 
-Rayfield:Notify({Title = "Stable", Content = "Anti-Duplicate Enabled", Duration = 5})
+Rayfield:Notify({Title = "Stable", Content = "New Coords Loaded", Duration = 5})
