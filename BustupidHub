@@ -1,7 +1,7 @@
 repeat task.wait() until game:IsLoaded()
 
 ------------------------------------------------
--- [VERSION: HOP DELAY 15s | AUTO BOTH | PLATFORM]
+-- [VERSION: TRIPLE FARM (3 EVENTS) | 15s HOP]
 ------------------------------------------------
 
 if getgenv().BustupidHub_Loaded then 
@@ -9,7 +9,7 @@ if getgenv().BustupidHub_Loaded then
 end
 getgenv().BustupidHub_Loaded = true
 
--- NHỚ UPDATE CODE NÀY LÊN GITHUB ĐỂ AUTOLOAD CHUẨN NHÉ
+-- LINK UPDATE GITHUB (NHỚ CẬP NHẬT CODE NÀY LÊN ĐÓ NHA)
 local SCRIPT_URL = "https://raw.githubusercontent.com/huynhphutoan1908-dev/BustupidHub/refs/heads/main/BustupidHub"
 
 ------------------------------------------------
@@ -42,20 +42,27 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
 ------------------------------------------------
--- TỌA ĐỘ
+-- TỌA ĐỘ (3 EVENTS)
 ------------------------------------------------
+-- Event 1
 local POS_EVENT_1 = Vector3.new(426.5, -12.7, -340.4)
 local CF_EVENT_1  = CFrame.new(426.5, -12.7, -340.4)
 
+-- Event 2
 local POS_EVENT_2 = Vector3.new(1136, 2.3, 527)
 local CF_EVENT_2  = CFrame.new(1136, 2.3, 527)
+
+-- Event 3 (Mới thêm)
+local POS_EVENT_3 = Vector3.new(2565.1, -6.7, -336.5)
+local CF_EVENT_3  = CFrame.new(2565.1, -6.7, -336.5)
 
 ------------------------------------------------
 -- BIẾN HỆ THỐNG
 ------------------------------------------------
-local autoTP_Both = true  -- Mặc định BẬT
+local autoTP_All3 = true  -- TỰ ĐỘNG BẬT FARM 3 ĐIỂM
 local autoTP_Ev1 = false   
 local autoTP_Ev2 = false 
+local autoTP_Ev3 = false -- Biến cho Event 3 lẻ
 local autoHop_Event = true 
 local autoPlatform = true 
 
@@ -82,7 +89,7 @@ local lastHopTime = 0
 local lastAFKAction = 0
 local shared_IsEventTime = false 
 local lastDeathPosition = nil 
-local plat1, plat2 
+local plat1, plat2, plat3 -- Thêm plat3
 
 ------------------------------------------------
 -- HÀM HỖ TRỢ
@@ -99,13 +106,18 @@ local function ManagePlatforms()
     if autoPlatform then
         if not plat1 then plat1 = CreateSafePlatform(POS_EVENT_1, "Bustupid_Plat1") end
         if not plat2 then plat2 = CreateSafePlatform(POS_EVENT_2, "Bustupid_Plat2") end
+        if not plat3 then plat3 = CreateSafePlatform(POS_EVENT_3, "Bustupid_Plat3") end -- Tạo sàn 3
+        
         if plat1 and plat1.Parent ~= workspace then plat1.Parent = workspace end
         if plat2 and plat2.Parent ~= workspace then plat2.Parent = workspace end
+        if plat3 and plat3.Parent ~= workspace then plat3.Parent = workspace end
     else
         if plat1 then plat1:Destroy(); plat1 = nil end
         if plat2 then plat2:Destroy(); plat2 = nil end
+        if plat3 then plat3:Destroy(); plat3 = nil end
         if workspace:FindFirstChild("Bustupid_Plat1") then workspace.Bustupid_Plat1:Destroy() end
         if workspace:FindFirstChild("Bustupid_Plat2") then workspace.Bustupid_Plat2:Destroy() end
+        if workspace:FindFirstChild("Bustupid_Plat3") then workspace.Bustupid_Plat3:Destroy() end
     end
 end
 
@@ -140,7 +152,7 @@ if not success then warn("Lỗi UI"); return end
 ------------------------------------------------
 -- LOGIC CHÍNH
 ------------------------------------------------
--- 1. LOOP TIME & HOP (ĐÃ SỬA THỜI GIAN)
+-- 1. LOOP TIME & HOP (15s)
 task.spawn(function()
     task.wait(1) 
     while task.wait(1) do
@@ -155,11 +167,9 @@ task.spawn(function()
 
         if autoAntiAFK and (tick() - lastAFKAction > 180) then lastAFKAction = tick(); PerformAntiAFK() end
 
-        -- [[ LOGIC AUTO HOP 15S ]] --
         if shared_IsEventTime and not isHopping and autoHop_Event then
              Rayfield:Notify({Title = "⏰ Event (xx:05-15)", Content = "Wait 15s then Hop...", Duration = 3})
-             -- Tăng thời gian chờ lên 15 giây
-             task.wait(15) 
+             task.wait(15) -- Chờ 15s
              if autoHop_Event and shared_IsEventTime then safeHop() end
         end
         
@@ -167,16 +177,26 @@ task.spawn(function()
     end
 end)
 
--- 2. LOOP AUTO TELEPORT
+-- 2. LOOP AUTO TELEPORT (3 ĐIỂM)
 task.spawn(function()
     while task.wait() do 
         local targetCF = nil
         if autoXYZ then targetCF = CF_EVENT_1 
         elseif shared_IsEventTime then
-            if autoTP_Both then
-                local cycle = tick() % 4; if cycle < 2 then targetCF = CF_EVENT_1 else targetCF = CF_EVENT_2 end
+            if autoTP_All3 then
+                -- Chia chu kỳ thành 6 giây (2s mỗi điểm)
+                local cycle = tick() % 6 
+                if cycle < 2 then 
+                    targetCF = CF_EVENT_1
+                elseif cycle < 4 then 
+                    targetCF = CF_EVENT_2
+                else 
+                    targetCF = CF_EVENT_3 
+                end
+            
             elseif autoTP_Ev1 then targetCF = CF_EVENT_1 
-            elseif autoTP_Ev2 then targetCF = CF_EVENT_2 end
+            elseif autoTP_Ev2 then targetCF = CF_EVENT_2 
+            elseif autoTP_Ev3 then targetCF = CF_EVENT_3 end
         end
 
         if targetCF and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
@@ -255,24 +275,31 @@ LocalPlayer.Idled:Connect(function() if autoAntiAFK then PerformAntiAFK() end en
 ------------------------------------------------
 -- UI SETUP
 ------------------------------------------------
-local Window = Rayfield:CreateWindow({Name = "Bustupid Hub | 15s HOP", LoadingTitle = "Loading...", LoadingSubtitle = "Wait 15s Before Hop", KeySystem = false})
+local Window = Rayfield:CreateWindow({Name = "Bustupid Hub | TRIPLE FARM", LoadingTitle = "Loading...", LoadingSubtitle = "3 Events Auto", KeySystem = false})
 
 local EventTab = Window:CreateTab("Events", 4483362458)
-EventTab:CreateSection("--- DUAL FARM (AUTO ON) ---")
+EventTab:CreateSection("--- TRIPLE FARM (AUTO ON) ---")
 EventTab:CreateToggle({
-    Name = "Auto Farm BOTH (Loop 2s)", 
-    CurrentValue = autoTP_Both, 
+    Name = "Auto Farm ALL 3 (Loop)", 
+    CurrentValue = autoTP_All3, 
     Callback = function(v) 
-        autoTP_Both = v; 
-        if v then autoTP_Ev1 = false; autoTP_Ev2 = false end 
+        autoTP_All3 = v; 
+        if v then autoTP_Ev1 = false; autoTP_Ev2 = false; autoTP_Ev3 = false end 
     end
 })
 
 EventTab:CreateSection("--- SINGLE & MANUAL ---")
-EventTab:CreateToggle({Name = "Auto TP Event 1 Only", CurrentValue = autoTP_Ev1, Callback = function(v) autoTP_Ev1 = v; if v then autoTP_Both = false; autoTP_Ev2 = false end end})
+-- Event 1
+EventTab:CreateToggle({Name = "Auto TP Event 1 Only", CurrentValue = autoTP_Ev1, Callback = function(v) autoTP_Ev1 = v; if v then autoTP_All3 = false; autoTP_Ev2 = false; autoTP_Ev3 = false end end})
 EventTab:CreateButton({Name = "TP Now -> Event 1 (426)", Callback = function() pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CF_EVENT_1 end) end})
-EventTab:CreateToggle({Name = "Auto TP Event 2 Only", CurrentValue = autoTP_Ev2, Callback = function(v) autoTP_Ev2 = v; if v then autoTP_Both = false; autoTP_Ev1 = false end end})
+
+-- Event 2
+EventTab:CreateToggle({Name = "Auto TP Event 2 Only", CurrentValue = autoTP_Ev2, Callback = function(v) autoTP_Ev2 = v; if v then autoTP_All3 = false; autoTP_Ev1 = false; autoTP_Ev3 = false end end})
 EventTab:CreateButton({Name = "TP Now -> Event 2 (1136)", Callback = function() pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CF_EVENT_2 end) end})
+
+-- Event 3
+EventTab:CreateToggle({Name = "Auto TP Event 3 Only", CurrentValue = autoTP_Ev3, Callback = function(v) autoTP_Ev3 = v; if v then autoTP_All3 = false; autoTP_Ev1 = false; autoTP_Ev2 = false end end})
+EventTab:CreateButton({Name = "TP Now -> Event 3 (2565)", Callback = function() pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CF_EVENT_3 end) end})
 
 EventTab:CreateSection("--- SAFETY ---")
 EventTab:CreateToggle({Name = "Create Safe Platforms", CurrentValue = autoPlatform, Callback = function(v) autoPlatform = v; ManagePlatforms() end})
@@ -283,12 +310,6 @@ CombatTab:CreateSection("--- VIP MOVEMENT ---")
 CombatTab:CreateToggle({Name = "Fly (Vip)", CurrentValue = false, Callback = function(v) ToggleFly(v) end})
 CombatTab:CreateSlider({Name = "Fly Speed", Range = {10, 300}, Increment = 5, Suffix = "Speed", CurrentValue = 50, Callback = function(v) flySpeed = v end})
 CombatTab:CreateToggle({Name = "No Clip (Wallhack)", CurrentValue = false, Callback = function(v) isNoclip = v; if v then noclipConnection = RunService.Stepped:Connect(function() if LocalPlayer.Character then for _, part in pairs(LocalPlayer.Character:GetChildren()) do if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end end end end) else if noclipConnection then noclipConnection:Disconnect() end end end})
-CombatTab:CreateSection("--- PVP ---")
-local function getPlayers() local t = {}; for _,p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then table.insert(t,p.Name) end end; return t end
-local dropdown = CombatTab:CreateDropdown({Name = "Select Player", Options = getPlayers(), Callback = function(v) if v and v[1] then targetPlayer = Players:FindFirstChild(v[1]) end end})
-CombatTab:CreateButton({Name = "Refresh Player", Callback = function() dropdown:Refresh(getPlayers()) end})
-CombatTab:CreateToggle({Name = "Auto TP Behind", CurrentValue = autoPlayerTP, Callback = function(v) autoPlayerTP = v end})
-CombatTab:CreateToggle({Name = "Auto Attack (Fast)", CurrentValue = autoAttack, Callback = function(v) autoAttack = v end})
 
 local ServerTab = Window:CreateTab("Server", 4483362458)
 ServerTab:CreateButton({Name = "Rejoin Server", Callback = function() QueueAutoLoad(); TeleportService:Teleport(game.PlaceId, LocalPlayer) end})
@@ -300,4 +321,4 @@ ServerTab:CreateToggle({Name = "Auto Load Script (After Hop)", CurrentValue = Us
 local MiscTab = Window:CreateTab("Misc", 4483362458)
 MiscTab:CreateToggle({Name = "Super Anti-AFK", CurrentValue = autoAntiAFK, Callback = function(v) autoAntiAFK = v end})
 
-Rayfield:Notify({Title = "DELAY UPDATED", Content = "Wait 15s before Hop", Duration = 5})
+Rayfield:Notify({Title = "TRIPLE FARM", Content = "3 Events Loop Enabled", Duration = 5})
