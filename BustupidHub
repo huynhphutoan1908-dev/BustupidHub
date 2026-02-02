@@ -1,7 +1,7 @@
 repeat task.wait() until game:IsLoaded()
 
 ------------------------------------------------
--- [VERSION: TRIPLE FARM (3 EVENTS) | 15s HOP]
+-- [VERSION: EVENT 3 FIX | DISABLE AUTO LOAD TEST]
 ------------------------------------------------
 
 if getgenv().BustupidHub_Loaded then 
@@ -9,7 +9,7 @@ if getgenv().BustupidHub_Loaded then
 end
 getgenv().BustupidHub_Loaded = true
 
--- LINK UPDATE GITHUB (NHỚ CẬP NHẬT CODE NÀY LÊN ĐÓ NHA)
+-- !!! QUAN TRỌNG: CẬP NHẬT CODE NÀY LÊN GITHUB NẾU MUỐN AUTO LOAD CHẠY ĐÚNG !!!
 local SCRIPT_URL = "https://raw.githubusercontent.com/huynhphutoan1908-dev/BustupidHub/refs/heads/main/BustupidHub"
 
 ------------------------------------------------
@@ -26,7 +26,7 @@ local UserSettings = {
     AutoHop_Normal    = false,  
     AutoAntiAFK       = true,    
     HopDelay          = 15,      
-    AutoLoadScript    = true 
+    AutoLoadScript    = false -- 🔴 ĐÃ TẮT ĐỂ BÁC TEST UI (BẬT LẠI SAU KHI UPDATE GITHUB)
 }
 
 ------------------------------------------------
@@ -44,26 +44,24 @@ local Camera = workspace.CurrentCamera
 ------------------------------------------------
 -- TỌA ĐỘ (3 EVENTS)
 ------------------------------------------------
--- Event 1
 local POS_EVENT_1 = Vector3.new(426.5, -12.7, -340.4)
 local CF_EVENT_1  = CFrame.new(426.5, -12.7, -340.4)
 
--- Event 2
 local POS_EVENT_2 = Vector3.new(1136, 2.3, 527)
 local CF_EVENT_2  = CFrame.new(1136, 2.3, 527)
 
--- Event 3 (Mới thêm)
+-- Event 3
 local POS_EVENT_3 = Vector3.new(2565.1, -6.7, -336.5)
 local CF_EVENT_3  = CFrame.new(2565.1, -6.7, -336.5)
 
 ------------------------------------------------
 -- BIẾN HỆ THỐNG
 ------------------------------------------------
-local autoTP_All3 = true  -- TỰ ĐỘNG BẬT FARM 3 ĐIỂM
+local autoTP_All3 = true  -- Auto Farm 3 điểm
 local autoTP_Ev1 = false   
 local autoTP_Ev2 = false 
-local autoTP_Ev3 = false -- Biến cho Event 3 lẻ
-local autoHop_Event = true 
+local autoTP_Ev3 = false 
+local autoHop_Event = false -- 🔴 ĐÃ TẮT MẶC ĐỊNH ĐỂ BÁC KỊP NHÌN MENU
 local autoPlatform = true 
 
 local autoXYZ = false 
@@ -89,7 +87,7 @@ local lastHopTime = 0
 local lastAFKAction = 0
 local shared_IsEventTime = false 
 local lastDeathPosition = nil 
-local plat1, plat2, plat3 -- Thêm plat3
+local plat1, plat2, plat3
 
 ------------------------------------------------
 -- HÀM HỖ TRỢ
@@ -106,8 +104,7 @@ local function ManagePlatforms()
     if autoPlatform then
         if not plat1 then plat1 = CreateSafePlatform(POS_EVENT_1, "Bustupid_Plat1") end
         if not plat2 then plat2 = CreateSafePlatform(POS_EVENT_2, "Bustupid_Plat2") end
-        if not plat3 then plat3 = CreateSafePlatform(POS_EVENT_3, "Bustupid_Plat3") end -- Tạo sàn 3
-        
+        if not plat3 then plat3 = CreateSafePlatform(POS_EVENT_3, "Bustupid_Plat3") end
         if plat1 and plat1.Parent ~= workspace then plat1.Parent = workspace end
         if plat2 and plat2.Parent ~= workspace then plat2.Parent = workspace end
         if plat3 and plat3.Parent ~= workspace then plat3.Parent = workspace end
@@ -152,7 +149,6 @@ if not success then warn("Lỗi UI"); return end
 ------------------------------------------------
 -- LOGIC CHÍNH
 ------------------------------------------------
--- 1. LOOP TIME & HOP (15s)
 task.spawn(function()
     task.wait(1) 
     while task.wait(1) do
@@ -169,31 +165,24 @@ task.spawn(function()
 
         if shared_IsEventTime and not isHopping and autoHop_Event then
              Rayfield:Notify({Title = "⏰ Event (xx:05-15)", Content = "Wait 15s then Hop...", Duration = 3})
-             task.wait(15) -- Chờ 15s
+             task.wait(15) 
              if autoHop_Event and shared_IsEventTime then safeHop() end
         end
-        
         if autoSafeHop and not isHopping then if tick() - lastHopTime >= hopDelay then lastHopTime = tick(); safeHop() end end
     end
 end)
 
--- 2. LOOP AUTO TELEPORT (3 ĐIỂM)
 task.spawn(function()
     while task.wait() do 
         local targetCF = nil
         if autoXYZ then targetCF = CF_EVENT_1 
         elseif shared_IsEventTime then
             if autoTP_All3 then
-                -- Chia chu kỳ thành 6 giây (2s mỗi điểm)
+                -- Cycle 3 điểm (6 giây)
                 local cycle = tick() % 6 
-                if cycle < 2 then 
-                    targetCF = CF_EVENT_1
-                elseif cycle < 4 then 
-                    targetCF = CF_EVENT_2
-                else 
-                    targetCF = CF_EVENT_3 
-                end
-            
+                if cycle < 2 then targetCF = CF_EVENT_1
+                elseif cycle < 4 then targetCF = CF_EVENT_2
+                else targetCF = CF_EVENT_3 end
             elseif autoTP_Ev1 then targetCF = CF_EVENT_1 
             elseif autoTP_Ev2 then targetCF = CF_EVENT_2 
             elseif autoTP_Ev3 then targetCF = CF_EVENT_3 end
@@ -275,7 +264,7 @@ LocalPlayer.Idled:Connect(function() if autoAntiAFK then PerformAntiAFK() end en
 ------------------------------------------------
 -- UI SETUP
 ------------------------------------------------
-local Window = Rayfield:CreateWindow({Name = "Bustupid Hub | TRIPLE FARM", LoadingTitle = "Loading...", LoadingSubtitle = "3 Events Auto", KeySystem = false})
+local Window = Rayfield:CreateWindow({Name = "Bustupid Hub | 3 EVENTS", LoadingTitle = "Loading...", LoadingSubtitle = "Triple Farm + Platforms", KeySystem = false})
 
 local EventTab = Window:CreateTab("Events", 4483362458)
 EventTab:CreateSection("--- TRIPLE FARM (AUTO ON) ---")
@@ -301,9 +290,10 @@ EventTab:CreateButton({Name = "TP Now -> Event 2 (1136)", Callback = function() 
 EventTab:CreateToggle({Name = "Auto TP Event 3 Only", CurrentValue = autoTP_Ev3, Callback = function(v) autoTP_Ev3 = v; if v then autoTP_All3 = false; autoTP_Ev1 = false; autoTP_Ev2 = false end end})
 EventTab:CreateButton({Name = "TP Now -> Event 3 (2565)", Callback = function() pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CF_EVENT_3 end) end})
 
-EventTab:CreateSection("--- SAFETY ---")
+EventTab:CreateSection("--- SETTINGS ---")
 EventTab:CreateToggle({Name = "Create Safe Platforms", CurrentValue = autoPlatform, Callback = function(v) autoPlatform = v; ManagePlatforms() end})
 EventTab:CreateToggle({Name = "Auto Hop (Event Time)", CurrentValue = autoHop_Event, Callback = function(v) autoHop_Event = v end})
+EventTab:CreateToggle({Name = "Auto Load Script", CurrentValue = UserSettings.AutoLoadScript, Callback = function(v) UserSettings.AutoLoadScript = v end})
 
 local CombatTab = Window:CreateTab("Combat", 4483362458)
 CombatTab:CreateSection("--- VIP MOVEMENT ---")
@@ -316,9 +306,8 @@ ServerTab:CreateButton({Name = "Rejoin Server", Callback = function() QueueAutoL
 ServerTab:CreateInput({Name = "Server ID", PlaceholderText = "JobId...", Callback = function(v) inputServerId = v end})
 ServerTab:CreateButton({Name = "Join Server ID", Callback = function() if inputServerId ~= "" then QueueAutoLoad(); TeleportService:TeleportToPlaceInstance(game.PlaceId, inputServerId, LocalPlayer) end end})
 ServerTab:CreateToggle({Name = "Auto Hop (Always)", CurrentValue = autoSafeHop, Callback = function(v) autoSafeHop = v end})
-ServerTab:CreateToggle({Name = "Auto Load Script (After Hop)", CurrentValue = UserSettings.AutoLoadScript, Callback = function(v) UserSettings.AutoLoadScript = v end})
 
 local MiscTab = Window:CreateTab("Misc", 4483362458)
 MiscTab:CreateToggle({Name = "Super Anti-AFK", CurrentValue = autoAntiAFK, Callback = function(v) autoAntiAFK = v end})
 
-Rayfield:Notify({Title = "TRIPLE FARM", Content = "3 Events Loop Enabled", Duration = 5})
+Rayfield:Notify({Title = "TEST MODE", Content = "Auto Load DISABLED", Duration = 5})
