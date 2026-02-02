@@ -1,7 +1,7 @@
 repeat task.wait() until game:IsLoaded()
 
 ------------------------------------------------
--- [VERSION: DISABLE DEATH TP | TRIPLE FARM]
+-- [VERSION: AUTO HOP ON | AUTO LOAD ON | FULL]
 ------------------------------------------------
 
 if getgenv().BustupidHub_Loaded then 
@@ -9,7 +9,7 @@ if getgenv().BustupidHub_Loaded then
 end
 getgenv().BustupidHub_Loaded = true
 
--- LINK UPDATE GITHUB
+-- !!! LƯU Ý: UPDATE CODE NÀY LÊN GITHUB ĐỂ KHI HOP KHÔNG BỊ MẤT MENU NHÉ !!!
 local SCRIPT_URL = "https://raw.githubusercontent.com/huynhphutoan1908-dev/BustupidHub/refs/heads/main/BustupidHub"
 
 ------------------------------------------------
@@ -18,7 +18,7 @@ local SCRIPT_URL = "https://raw.githubusercontent.com/huynhphutoan1908-dev/Bustu
 local UserSettings = {
     -- COMBAT
     AutoAttack_Fast   = false, 
-    AutoTP_Death      = false, -- 🔴 ĐÃ TẮT (Mặc định không quay lại chỗ chết)
+    AutoTP_Death      = false, -- Tắt Death TP
     AntiVoid_Death    = true,    
     AutoTP_Behind     = false,  
 
@@ -26,7 +26,7 @@ local UserSettings = {
     AutoHop_Normal    = false,  
     AutoAntiAFK       = true,    
     HopDelay          = 15,      
-    AutoLoadScript    = false -- Đang tắt để test UI
+    AutoLoadScript    = true -- 🔴 ĐÃ BẬT LẠI (QUAN TRỌNG CHO AUTO HOP)
 }
 
 ------------------------------------------------
@@ -56,17 +56,17 @@ local CF_EVENT_3  = CFrame.new(2565.1, -6.7, -336.5)
 ------------------------------------------------
 -- BIẾN HỆ THỐNG
 ------------------------------------------------
-local autoTP_All3 = true  -- Auto Farm 3 điểm
+local autoTP_All3 = true  -- Auto Farm 3 điểm (ON)
 local autoTP_Ev1 = false   
 local autoTP_Ev2 = false 
 local autoTP_Ev3 = false 
-local autoHop_Event = false 
+local autoHop_Event = true -- 🔴 ĐÃ BẬT (ON)
 local autoPlatform = true 
 
 local autoXYZ = false 
 local autoPlayerTP = UserSettings.AutoTP_Behind
 local autoSafeHop = UserSettings.AutoHop_Normal
-local autoDeathTP = UserSettings.AutoTP_Death -- Lấy giá trị False từ UserSettings
+local autoDeathTP = UserSettings.AutoTP_Death 
 local antiVoid = UserSettings.AntiVoid_Death
 local autoAttack = UserSettings.AutoAttack_Fast
 local autoAntiAFK = UserSettings.AutoAntiAFK
@@ -262,7 +262,7 @@ LocalPlayer.Idled:Connect(function() if autoAntiAFK then PerformAntiAFK() end en
 ------------------------------------------------
 -- UI SETUP
 ------------------------------------------------
-local Window = Rayfield:CreateWindow({Name = "Bustupid Hub | NO DEATH TP", LoadingTitle = "Loading...", LoadingSubtitle = "Disabled Death TP", KeySystem = false})
+local Window = Rayfield:CreateWindow({Name = "Bustupid Hub | FULL AUTO", LoadingTitle = "Loading...", LoadingSubtitle = "Auto Hop + Load Active", KeySystem = false})
 
 local EventTab = Window:CreateTab("Events", 4483362458)
 EventTab:CreateSection("--- TRIPLE FARM (AUTO ON) ---")
@@ -299,7 +299,6 @@ local dropdown = CombatTab:CreateDropdown({Name = "Select Player", Options = get
 CombatTab:CreateButton({Name = "Refresh Player", Callback = function() dropdown:Refresh(getPlayers()) end})
 CombatTab:CreateToggle({Name = "Auto TP Behind", CurrentValue = autoPlayerTP, Callback = function(v) autoPlayerTP = v end})
 CombatTab:CreateToggle({Name = "Auto Attack (Fast)", CurrentValue = autoAttack, Callback = function(v) autoAttack = v end})
--- NÚT NÀY ĐÃ TẮT MẶC ĐỊNH
 CombatTab:CreateToggle({Name = "Auto TP Back On Death", CurrentValue = autoDeathTP, Callback = function(v) autoDeathTP = v end})
 
 local ServerTab = Window:CreateTab("Server", 4483362458)
@@ -312,4 +311,4 @@ ServerTab:CreateToggle({Name = "Auto Load Script (After Hop)", CurrentValue = Us
 local MiscTab = Window:CreateTab("Misc", 4483362458)
 MiscTab:CreateToggle({Name = "Super Anti-AFK", CurrentValue = autoAntiAFK, Callback = function(v) autoAntiAFK = v end})
 
-Rayfield:Notify({Title = "SETTINGS APPLIED", Content = "No Death TP + 3 Events", Duration = 5})
+Rayfield:Notify({Title = "FULL AUTO", Content = "Hop & Load ENABLED", Duration = 5})
