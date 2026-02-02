@@ -1,7 +1,7 @@
 repeat task.wait() until game:IsLoaded()
 
 ------------------------------------------------
--- [VERSION: FIXED AUTOLOAD UI | PLATFORM | DUAL]
+-- [VERSION: HOP DELAY 15s | AUTO BOTH | PLATFORM]
 ------------------------------------------------
 
 if getgenv().BustupidHub_Loaded then 
@@ -9,7 +9,7 @@ if getgenv().BustupidHub_Loaded then
 end
 getgenv().BustupidHub_Loaded = true
 
--- LƯU Ý: LINK NÀY PHẢI CHỨA CODE MỚI THÌ KHI HOP MỚI RA TÍNH NĂNG MỚI
+-- NHỚ UPDATE CODE NÀY LÊN GITHUB ĐỂ AUTOLOAD CHUẨN NHÉ
 local SCRIPT_URL = "https://raw.githubusercontent.com/huynhphutoan1908-dev/BustupidHub/refs/heads/main/BustupidHub"
 
 ------------------------------------------------
@@ -26,7 +26,7 @@ local UserSettings = {
     AutoHop_Normal    = false,  
     AutoAntiAFK       = true,    
     HopDelay          = 15,      
-    AutoLoadScript    = true -- MẶC ĐỊNH BẬT 
+    AutoLoadScript    = true 
 }
 
 ------------------------------------------------
@@ -53,7 +53,7 @@ local CF_EVENT_2  = CFrame.new(1136, 2.3, 527)
 ------------------------------------------------
 -- BIẾN HỆ THỐNG
 ------------------------------------------------
-local autoTP_Both = false 
+local autoTP_Both = true  -- Mặc định BẬT
 local autoTP_Ev1 = false   
 local autoTP_Ev2 = false 
 local autoHop_Event = true 
@@ -140,6 +140,7 @@ if not success then warn("Lỗi UI"); return end
 ------------------------------------------------
 -- LOGIC CHÍNH
 ------------------------------------------------
+-- 1. LOOP TIME & HOP (ĐÃ SỬA THỜI GIAN)
 task.spawn(function()
     task.wait(1) 
     while task.wait(1) do
@@ -154,15 +155,19 @@ task.spawn(function()
 
         if autoAntiAFK and (tick() - lastAFKAction > 180) then lastAFKAction = tick(); PerformAntiAFK() end
 
+        -- [[ LOGIC AUTO HOP 15S ]] --
         if shared_IsEventTime and not isHopping and autoHop_Event then
-             Rayfield:Notify({Title = "⏰ Event (xx:05-15)", Content = "Wait 5s then Hop...", Duration = 3})
-             task.wait(5) 
+             Rayfield:Notify({Title = "⏰ Event (xx:05-15)", Content = "Wait 15s then Hop...", Duration = 3})
+             -- Tăng thời gian chờ lên 15 giây
+             task.wait(15) 
              if autoHop_Event and shared_IsEventTime then safeHop() end
         end
+        
         if autoSafeHop and not isHopping then if tick() - lastHopTime >= hopDelay then lastHopTime = tick(); safeHop() end end
     end
 end)
 
+-- 2. LOOP AUTO TELEPORT
 task.spawn(function()
     while task.wait() do 
         local targetCF = nil
@@ -250,11 +255,18 @@ LocalPlayer.Idled:Connect(function() if autoAntiAFK then PerformAntiAFK() end en
 ------------------------------------------------
 -- UI SETUP
 ------------------------------------------------
-local Window = Rayfield:CreateWindow({Name = "Bustupid Hub | SAFE PLATFORM", LoadingTitle = "Loading...", LoadingSubtitle = "Anti-Void Enabled", KeySystem = false})
+local Window = Rayfield:CreateWindow({Name = "Bustupid Hub | 15s HOP", LoadingTitle = "Loading...", LoadingSubtitle = "Wait 15s Before Hop", KeySystem = false})
 
 local EventTab = Window:CreateTab("Events", 4483362458)
-EventTab:CreateSection("--- DUAL FARM ---")
-EventTab:CreateToggle({Name = "Auto Farm BOTH (Loop 2s)", CurrentValue = autoTP_Both, Callback = function(v) autoTP_Both = v; if v then autoTP_Ev1 = false; autoTP_Ev2 = false end end})
+EventTab:CreateSection("--- DUAL FARM (AUTO ON) ---")
+EventTab:CreateToggle({
+    Name = "Auto Farm BOTH (Loop 2s)", 
+    CurrentValue = autoTP_Both, 
+    Callback = function(v) 
+        autoTP_Both = v; 
+        if v then autoTP_Ev1 = false; autoTP_Ev2 = false end 
+    end
+})
 
 EventTab:CreateSection("--- SINGLE & MANUAL ---")
 EventTab:CreateToggle({Name = "Auto TP Event 1 Only", CurrentValue = autoTP_Ev1, Callback = function(v) autoTP_Ev1 = v; if v then autoTP_Both = false; autoTP_Ev2 = false end end})
@@ -283,14 +295,9 @@ ServerTab:CreateButton({Name = "Rejoin Server", Callback = function() QueueAutoL
 ServerTab:CreateInput({Name = "Server ID", PlaceholderText = "JobId...", Callback = function(v) inputServerId = v end})
 ServerTab:CreateButton({Name = "Join Server ID", Callback = function() if inputServerId ~= "" then QueueAutoLoad(); TeleportService:TeleportToPlaceInstance(game.PlaceId, inputServerId, LocalPlayer) end end})
 ServerTab:CreateToggle({Name = "Auto Hop (Always)", CurrentValue = autoSafeHop, Callback = function(v) autoSafeHop = v end})
--- [[ NÚT AUTOLOAD ĐÃ TRỞ LẠI ]] --
-ServerTab:CreateToggle({
-    Name = "Auto Load Script (After Hop)", 
-    CurrentValue = UserSettings.AutoLoadScript, 
-    Callback = function(v) UserSettings.AutoLoadScript = v end
-})
+ServerTab:CreateToggle({Name = "Auto Load Script (After Hop)", CurrentValue = UserSettings.AutoLoadScript, Callback = function(v) UserSettings.AutoLoadScript = v end})
 
 local MiscTab = Window:CreateTab("Misc", 4483362458)
 MiscTab:CreateToggle({Name = "Super Anti-AFK", CurrentValue = autoAntiAFK, Callback = function(v) autoAntiAFK = v end})
 
-Rayfield:Notify({Title = "UI FIXED", Content = "AutoLoad Button Restored", Duration = 5})
+Rayfield:Notify({Title = "DELAY UPDATED", Content = "Wait 15s before Hop", Duration = 5})
