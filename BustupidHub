@@ -1,28 +1,26 @@
 repeat task.wait() until game:IsLoaded()
 
 ------------------------------------------------
--- [VERSION: SAFE BOOST + UNLOCKED FPS | NO CRASH]
+-- [VERSION: 10s HOP DELAY | SAFE BOOST | UNLOCKED FPS]
 ------------------------------------------------
 
--- [[ 1. TĂNG TỐC AN TOÀN (KHÔNG QUÉT MAP) ]] --
+-- [[ 1. TĂNG TỐC AN TOÀN (SAFE BOOST) ]] --
 pcall(function()
-    -- Chỉ chỉnh cài đặt hệ thống, không chạm vào part (Chống Crash)
     local l = game:GetService("Lighting")
-    l.GlobalShadows = false -- Tắt bóng
-    l.FogEnd = 9e9 -- Xóa sương mù
+    l.GlobalShadows = false 
+    l.FogEnd = 9e9 
     l.Brightness = 0
-    settings().Rendering.QualityLevel = "Level01" -- Cấu hình thấp nhất
+    settings().Rendering.QualityLevel = "Level01"
     
-    -- Tắt hiệu ứng nước (Nếu có)
     if workspace:FindFirstChildOfClass("Terrain") then
         workspace.Terrain.WaterWaveSize = 0
         workspace.Terrain.WaterReflectance = 0
     end
 end)
 
--- [[ 2. DỌN RAM TỰ ĐỘNG (ANTI-CRASH) ]] --
+-- [[ 2. DỌN RAM TỰ ĐỘNG ]] --
 task.spawn(function()
-    while task.wait(30) do -- Dọn rác mỗi 30s
+    while task.wait(30) do 
         pcall(function() collectgarbage("collect") end)
     end
 end)
@@ -46,7 +44,7 @@ local UserSettings = {
     AutoTP_Behind     = false,  
     AutoHop_Normal    = false,  
     AutoAntiAFK       = true, 
-    HopDelay          = 15,      
+    HopDelay          = 10,  -- Đã chỉnh xuống 10s
     AutoLoadScript    = true 
 }
 
@@ -58,10 +56,11 @@ local TeleportService = game:GetService("TeleportService")
 local VirtualUser = game:GetService("VirtualUser")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- TỌA ĐỘ 3 EVENT (CHUẨN MỚI)
+-- TỌA ĐỘ 3 EVENT (CHUẨN)
 local CF_EVENT_1 = CFrame.new(426.5, -12.7, -340.4)
 local CF_EVENT_2 = CFrame.new(1136, 2.3, 527)
 local CF_EVENT_3 = CFrame.new(2568, -6.5, -336.9)
@@ -82,7 +81,7 @@ local autoDeathTP = UserSettings.AutoTP_Death
 local antiVoid = UserSettings.AntiVoid_Death
 local autoAttack = UserSettings.AutoAttack_Fast
 local autoAntiAFK = UserSettings.AutoAntiAFK
-local hopDelay = UserSettings.HopDelay
+local hopDelay = 10 -- Đặt biến cục bộ là 10s
 
 local isFlying = false; local flySpeed = 50
 local isNoclip = false; local noclipConnection = nil
@@ -142,8 +141,10 @@ task.spawn(function()
         end
 
         if isTime and autoHop_Event and not isHopping and not bypassTime then
-             Rayfield:Notify({Title = "⏰ Event Hop", Content = "Wait 15s...", Duration = 3})
-             task.wait(15) 
+             -- THÔNG BÁO 10 GIÂY
+             Rayfield:Notify({Title = "⏰ Event Hop", Content = "Wait 10s...", Duration = 3})
+             task.wait(10) -- CHỜ 10 GIÂY
+             
              if autoHop_Event then 
                  isHopping = true; QueueAutoLoad()
                  local PlaceID = game.PlaceId
@@ -204,7 +205,7 @@ RunService.Heartbeat:Connect(function() if autoPlayerTP and targetPlayer and tar
 ------------------------------------------------
 -- UI SETUP
 ------------------------------------------------
-local Window = Rayfield:CreateWindow({Name = "Bustupid Hub | SAFE BOOST", LoadingTitle = "Loading...", LoadingSubtitle = "Safe Graphics + Triple Farm", KeySystem = false})
+local Window = Rayfield:CreateWindow({Name = "Bustupid Hub | 10s HOP", LoadingTitle = "Loading...", LoadingSubtitle = "Fast Hop + Safe Boost", KeySystem = false})
 
 local EventTab = Window:CreateTab("Triple Farm", 4483362458)
 EventTab:CreateToggle({Name = "Auto Triple Farm (Loop 2s)", CurrentValue = autoTP_Triple, Callback = function(v) autoTP_Triple = v; if v then autoTP_Ev1 = false; autoTP_Ev2 = false; autoTP_Ev3 = false end end})
@@ -220,7 +221,8 @@ EventTab:CreateButton({Name = "TP Now -> Event 3", Callback = function() pcall(f
 
 EventTab:CreateSection("--- SETTINGS ---")
 EventTab:CreateToggle({Name = "Create Safe Platforms", CurrentValue = autoPlatform, Callback = function(v) autoPlatform = v; ManagePlatforms() end})
-EventTab:CreateToggle({Name = "Auto Hop (15s Delay)", CurrentValue = autoHop_Event, Callback = function(v) autoHop_Event = v end})
+-- CẬP NHẬT TÊN NÚT
+EventTab:CreateToggle({Name = "Auto Hop (10s Delay)", CurrentValue = autoHop_Event, Callback = function(v) autoHop_Event = v end})
 
 local CombatTab = Window:CreateTab("Combat", 4483362458)
 CombatTab:CreateSection("--- VIP MOVEMENT ---")
@@ -244,4 +246,4 @@ ServerTab:CreateToggle({Name = "Auto Load Script", CurrentValue = UserSettings.A
 local MiscTab = Window:CreateTab("Misc", 4483362458)
 MiscTab:CreateToggle({Name = "Anti-AFK (Stable)", CurrentValue = autoAntiAFK, Callback = function(v) autoAntiAFK = v end})
 
-Rayfield:Notify({Title = "SAFE MODE", Content = "No-Crash Boost Active", Duration = 5})
+Rayfield:Notify({Title = "HOP DELAY: 10s", Content = "Updated Speed!", Duration = 5})
