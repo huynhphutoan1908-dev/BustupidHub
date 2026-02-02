@@ -24,7 +24,7 @@ local UserSettings = {
     AntiVoid_Death    = true,    
     AutoTP_Behind     = false,  
     AutoHop_Normal    = false,  
-    AutoAntiAFK       = true,  
+    AutoAntiAFK       = false,  
     HopDelay          = 15,      
     AutoLoadScript    = true 
 }
