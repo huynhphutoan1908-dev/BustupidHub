@@ -1,7 +1,7 @@
 repeat task.wait() until game:IsLoaded()
 
 ------------------------------------------------
--- [VERSION: DUAL EVENT | TIME: xx:05]
+-- [VERSION: FIXED AUTOLOAD UI | PLATFORM | DUAL]
 ------------------------------------------------
 
 if getgenv().BustupidHub_Loaded then 
@@ -9,6 +9,7 @@ if getgenv().BustupidHub_Loaded then
 end
 getgenv().BustupidHub_Loaded = true
 
+-- LƯU Ý: LINK NÀY PHẢI CHỨA CODE MỚI THÌ KHI HOP MỚI RA TÍNH NĂNG MỚI
 local SCRIPT_URL = "https://raw.githubusercontent.com/huynhphutoan1908-dev/BustupidHub/refs/heads/main/BustupidHub"
 
 ------------------------------------------------
@@ -17,15 +18,15 @@ local SCRIPT_URL = "https://raw.githubusercontent.com/huynhphutoan1908-dev/Bustu
 local UserSettings = {
     -- COMBAT
     AutoAttack_Fast   = false, 
-    AutoTP_Death      = true,   
-    AntiVoid_Death    = true,   
-    AutoTP_Behind     = false, 
+    AutoTP_Death      = true,    
+    AntiVoid_Death    = true,    
+    AutoTP_Behind     = false,  
 
     -- SERVER
     AutoHop_Normal    = false,  
-    AutoAntiAFK       = true,   
-    HopDelay          = 15,     
-    AutoLoadScript    = true    
+    AutoAntiAFK       = true,    
+    HopDelay          = 15,      
+    AutoLoadScript    = true -- MẶC ĐỊNH BẬT 
 }
 
 ------------------------------------------------
@@ -36,33 +37,29 @@ local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local VirtualUser = game:GetService("VirtualUser")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
 ------------------------------------------------
--- TỌA ĐỘ (CONFIG)
+-- TỌA ĐỘ
 ------------------------------------------------
--- Event 1 (Cũ): 426.5, -12.7, -340.4
 local POS_EVENT_1 = Vector3.new(426.5, -12.7, -340.4)
 local CF_EVENT_1  = CFrame.new(426.5, -12.7, -340.4)
 
--- Event 2 (Mới): 1136, 2.3, 527
 local POS_EVENT_2 = Vector3.new(1136, 2.3, 527)
 local CF_EVENT_2  = CFrame.new(1136, 2.3, 527)
 
 ------------------------------------------------
 -- BIẾN HỆ THỐNG
 ------------------------------------------------
--- Biến điều khiển Event 1
-local autoTP_Ev1 = true   -- Mặc định BẬT
-local autoHop_Ev1 = true  -- Mặc định BẬT
+local autoTP_Both = false 
+local autoTP_Ev1 = false   
+local autoTP_Ev2 = false 
+local autoHop_Event = true 
+local autoPlatform = true 
 
--- Biến điều khiển Event 2
-local autoTP_Ev2 = true  -- Mặc định TẮT
-local autoHop_Ev2 = true -- Mặc định TẮT
-
--- Biến chung
 local autoXYZ = false 
-local autoTimeTP = false 
 local autoPlayerTP = UserSettings.AutoTP_Behind
 local autoSafeHop = UserSettings.AutoHop_Normal
 local autoDeathTP = UserSettings.AutoTP_Death
@@ -71,20 +68,47 @@ local autoAttack = UserSettings.AutoAttack_Fast
 local autoAntiAFK = UserSettings.AutoAntiAFK
 local hopDelay = UserSettings.HopDelay
 
+local isFlying = false
+local flySpeed = 50
+local isNoclip = false
+local noclipConnection = nil
+local flyBodyGyro = nil
+local flyBodyVelocity = nil
+
 local targetPlayer = nil
-local lastHour = -1
 local inputServerId = ""
 local isHopping = false 
-local failCount = 0
 local lastHopTime = 0 
 local lastAFKAction = 0
 local shared_IsEventTime = false 
 local lastDeathPosition = nil 
-local TELEPORT_TIMES = 10
+local plat1, plat2 
 
 ------------------------------------------------
 -- HÀM HỖ TRỢ
 ------------------------------------------------
+local function CreateSafePlatform(pos, name)
+    if workspace:FindFirstChild(name) then return workspace[name] end
+    local p = Instance.new("Part")
+    p.Name = name; p.Size = Vector3.new(25, 1, 25); p.Position = pos - Vector3.new(0, 3.5, 0)
+    p.Anchored = true; p.CanCollide = true; p.Transparency = 0.6; p.BrickColor = BrickColor.new("Lime green"); p.Material = Enum.Material.Neon; p.Parent = workspace
+    return p
+end
+
+local function ManagePlatforms()
+    if autoPlatform then
+        if not plat1 then plat1 = CreateSafePlatform(POS_EVENT_1, "Bustupid_Plat1") end
+        if not plat2 then plat2 = CreateSafePlatform(POS_EVENT_2, "Bustupid_Plat2") end
+        if plat1 and plat1.Parent ~= workspace then plat1.Parent = workspace end
+        if plat2 and plat2.Parent ~= workspace then plat2.Parent = workspace end
+    else
+        if plat1 then plat1:Destroy(); plat1 = nil end
+        if plat2 then plat2:Destroy(); plat2 = nil end
+        if workspace:FindFirstChild("Bustupid_Plat1") then workspace.Bustupid_Plat1:Destroy() end
+        if workspace:FindFirstChild("Bustupid_Plat2") then workspace.Bustupid_Plat2:Destroy() end
+    end
+end
+
 local function QueueAutoLoad()
     if not UserSettings.AutoLoadScript then return end
     local nextCode = [[
@@ -114,243 +138,159 @@ end)
 if not success then warn("Lỗi UI"); return end
 
 ------------------------------------------------
--- LOGIC CHÍNH (ĐÃ SỬA GIỜ)
+-- LOGIC CHÍNH
 ------------------------------------------------
-
--- 1. LOOP KIỂM TRA GIỜ & HOP
 task.spawn(function()
-    task.wait(5) 
+    task.wait(1) 
     while task.wait(1) do
+        ManagePlatforms()
         local t = os.date("*t")
-        
-        -- [[ CẬP NHẬT: CHỈ KÍCH HOẠT PHÚT THỨ 5 ]] --
-        if t.min == 5 then
+        if t.min >= 5 and t.min <= 15 then
             shared_IsEventTime = true
         else
             shared_IsEventTime = false
-            -- Reset hopping state khi qua phút thứ 6
-            if isHopping and (autoHop_Ev1 or autoHop_Ev2) and t.min == 6 then 
-                isHopping = false 
-            end
+            if isHopping and autoHop_Event and t.min == 16 then isHopping = false end
         end
 
-        -- Anti AFK
-        if autoAntiAFK and (tick() - lastAFKAction > 180) then
-            lastAFKAction = tick()
-            PerformAntiAFK()
-        end
+        if autoAntiAFK and (tick() - lastAFKAction > 180) then lastAFKAction = tick(); PerformAntiAFK() end
 
-        -- Logic Auto Hop Event (Chung hàm safeHop)
-        if shared_IsEventTime and not isHopping then
-             if (autoHop_Ev1 or autoHop_Ev2) then
-                 Rayfield:Notify({Title = "⏰ Event (xx:05)", Content = "Wait 5s then Hop...", Duration = 3})
-                 task.wait(5) 
-                 -- Check lại lần nữa trước khi hop
-                 if (autoHop_Ev1 or autoHop_Ev2) and shared_IsEventTime then
-                     safeHop() 
-                 end
-             end
+        if shared_IsEventTime and not isHopping and autoHop_Event then
+             Rayfield:Notify({Title = "⏰ Event (xx:05-15)", Content = "Wait 5s then Hop...", Duration = 3})
+             task.wait(5) 
+             if autoHop_Event and shared_IsEventTime then safeHop() end
         end
-        
-        -- Logic Auto Hop Thường
-        if autoSafeHop and not isHopping then
-            if tick() - lastHopTime >= hopDelay then
-                lastHopTime = tick()
-                safeHop()
-            end
-        end
+        if autoSafeHop and not isHopping then if tick() - lastHopTime >= hopDelay then lastHopTime = tick(); safeHop() end end
     end
 end)
 
--- 2. LOOP AUTO TELEPORT (FAST)
 task.spawn(function()
-    while task.wait(0.2) do
-        -- Auto XYZ Manual
-        if autoXYZ then
-            pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CF_EVENT_1 end) 
-        
-        -- Auto Event 1 (Khi đúng phút 5)
-        elseif autoTP_Ev1 and shared_IsEventTime then
-            pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CF_EVENT_1 end)
-            
-        -- Auto Event 2 (Khi đúng phút 5)
-        elseif autoTP_Ev2 and shared_IsEventTime then
-            pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CF_EVENT_2 end)
+    while task.wait() do 
+        local targetCF = nil
+        if autoXYZ then targetCF = CF_EVENT_1 
+        elseif shared_IsEventTime then
+            if autoTP_Both then
+                local cycle = tick() % 4; if cycle < 2 then targetCF = CF_EVENT_1 else targetCF = CF_EVENT_2 end
+            elseif autoTP_Ev1 then targetCF = CF_EVENT_1 
+            elseif autoTP_Ev2 then targetCF = CF_EVENT_2 end
         end
-    end
-end)
 
-------------------------------------------------
--- CHỨC NĂNG KHÁC (GIỮ NGUYÊN)
-------------------------------------------------
--- Safe Hop Function
-safeHop = function()
-    if isHopping then return end 
-    isHopping = true
-    QueueAutoLoad()
-    Rayfield:Notify({Title = "🛡️ Safe Hop", Content = "Scanning...", Duration = 2})
-    local PlaceID = game.PlaceId
-    local foundAnything = ""
-    local validServers = {} 
-    local function FetchServers()
-        local Site;
-        local success, result = pcall(function()
-            return game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100' .. (foundAnything ~= "" and ("&cursor=" .. foundAnything) or ""))
-        end)
-        if not success then return false end
-        Site = HttpService:JSONDecode(result)
-        if Site.nextPageCursor and Site.nextPageCursor ~= "null" then foundAnything = Site.nextPageCursor end
-        for i,v in pairs(Site.data) do
-            local ID = tostring(v.id)
-            local max = tonumber(v.maxPlayers)
-            local playing = tonumber(v.playing)
-            if (max - playing >= 2) and ID ~= game.JobId then table.insert(validServers, ID) end
-        end
-        return true
-    end
-    pcall(function() 
-        local try1 = FetchServers()
-        if not try1 then task.wait(2) end 
-        if foundAnything ~= "" then task.wait(0.5); FetchServers() end 
-    end)
-    if #validServers > 0 then
-        local randomID = validServers[math.random(1, #validServers)]
-        task.wait(math.random(15, 30) / 10) 
-        TeleportService:TeleportToPlaceInstance(PlaceID, randomID, LocalPlayer)
-        task.delay(30, function() if isHopping then isHopping = false end end)
-    else
-        Rayfield:Notify({Title = "No Server", Content = "Rejoining...", Duration = 2})
-        task.wait(1)
-        TeleportService:Teleport(game.PlaceId, LocalPlayer)
-        isHopping = false
-    end
-end
-
--- Death TP
-local function OnCharacterAdded(char)
-    if autoDeathTP and lastDeathPosition then
-        task.spawn(function()
-            Rayfield:Notify({Title = "♻️ Loading...", Content = "Wait 1.5s...", Duration = 1.5})
-            task.wait(1.5) 
-            local hrp = char:WaitForChild("HumanoidRootPart", 10)
-            if hrp then
-                for i = 1, 3 do hrp.CFrame = lastDeathPosition; task.wait(0.1) end
-                lastDeathPosition = nil 
-            end
-        end)
-    end
-    local hum = char:WaitForChild("Humanoid", 10)
-    if hum then
-        hum.Died:Connect(function()
-            if autoDeathTP and char:FindFirstChild("HumanoidRootPart") then
-                local currentPos = char.HumanoidRootPart.CFrame
-                if antiVoid and currentPos.Y < -20 then lastDeathPosition = nil else lastDeathPosition = currentPos end
-            end
-        end)
-    end
-end
-LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
-if LocalPlayer.Character then OnCharacterAdded(LocalPlayer.Character) end
-
--- Auto Attack
-task.spawn(function()
-    while task.wait(0.1) do
-        if autoAttack then
+        if targetCF and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = LocalPlayer.Character.HumanoidRootPart
+            local dist = (hrp.Position - targetCF.Position).Magnitude
             pcall(function()
-                local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-                if tool then tool:Activate() end
-                VirtualUser:CaptureController()
-                VirtualUser:ClickButton1(Vector2.new())
+                if dist > 5 then hrp.CFrame = targetCF; hrp.Velocity = Vector3.new(0,0,0)
+                else
+                    local time = tick() * 12 
+                    local offsetX = math.cos(time) * 2; local offsetZ = math.sin(time) * 2
+                    hrp.CFrame = targetCF * CFrame.new(offsetX, 0, offsetZ); hrp.Velocity = Vector3.new(0,0,0) 
+                end
             end)
         end
     end
 end)
 
--- Combat TP
-RunService.Heartbeat:Connect(function()
-    if autoPlayerTP and targetPlayer and targetPlayer.Character then
-        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        local thrp = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if hrp and thrp then hrp.CFrame = thrp.CFrame * CFrame.new(0,0,-2) end
-    end
-end)
+------------------------------------------------
+-- CHỨC NĂNG KHÁC
+------------------------------------------------
+local function ToggleFly(state)
+    isFlying = state
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChild("Humanoid")
+    if not hrp or not hum then return end
+    if isFlying then
+        hum.PlatformStand = true 
+        flyBodyGyro = Instance.new("BodyGyro", hrp); flyBodyGyro.P = 9e4; flyBodyGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9); flyBodyGyro.cframe = hrp.CFrame
+        flyBodyVelocity = Instance.new("BodyVelocity", hrp); flyBodyVelocity.velocity = Vector3.new(0, 0, 0); flyBodyVelocity.maxForce = Vector3.new(9e9, 9e9, 9e9)
+        task.spawn(function()
+            while isFlying and char and hum.Health > 0 do
+                flyBodyGyro.cframe = Camera.CFrame
+                local vel = Vector3.new(0, 0, 0)
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then vel = vel + Camera.CFrame.LookVector * flySpeed end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then vel = vel - Camera.CFrame.LookVector * flySpeed end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then vel = vel - Camera.CFrame.RightVector * flySpeed end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then vel = vel + Camera.CFrame.RightVector * flySpeed end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then vel = vel + Vector3.new(0, flySpeed, 0) end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then vel = vel - Vector3.new(0, flySpeed, 0) end
+                flyBodyVelocity.velocity = vel; task.wait()
+            end
+        end)
+    else if flyBodyGyro then flyBodyGyro:Destroy() end; if flyBodyVelocity then flyBodyVelocity:Destroy() end; hum.PlatformStand = false end
+end
 
+safeHop = function()
+    if isHopping then return end; isHopping = true; QueueAutoLoad(); Rayfield:Notify({Title = "🛡️ Safe Hop", Content = "Scanning...", Duration = 2})
+    local PlaceID = game.PlaceId; local foundAnything = ""; local validServers = {} 
+    local function FetchServers()
+        local Site; local success, result = pcall(function() return game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100' .. (foundAnything ~= "" and ("&cursor=" .. foundAnything) or "")) end)
+        if not success then return false end
+        Site = HttpService:JSONDecode(result); if Site.nextPageCursor and Site.nextPageCursor ~= "null" then foundAnything = Site.nextPageCursor end
+        for i,v in pairs(Site.data) do local ID = tostring(v.id); local max = tonumber(v.maxPlayers); local playing = tonumber(v.playing); if (max - playing >= 2) and ID ~= game.JobId then table.insert(validServers, ID) end end
+        return true
+    end
+    pcall(function() local try1 = FetchServers(); if not try1 then task.wait(2) end; if foundAnything ~= "" then task.wait(0.5); FetchServers() end end)
+    if #validServers > 0 then
+        local randomID = validServers[math.random(1, #validServers)]; task.wait(math.random(15, 30) / 10); TeleportService:TeleportToPlaceInstance(PlaceID, randomID, LocalPlayer); task.delay(30, function() if isHopping then isHopping = false end end)
+    else Rayfield:Notify({Title = "No Server", Content = "Rejoining...", Duration = 2}); task.wait(1); TeleportService:Teleport(game.PlaceId, LocalPlayer); isHopping = false end
+end
+
+local function OnCharacterAdded(char)
+    isFlying = false; if isNoclip and noclipConnection then noclipConnection:Disconnect(); isNoclip = false end
+    if autoDeathTP and lastDeathPosition then
+        task.spawn(function() Rayfield:Notify({Title = "♻️ Loading...", Content = "Wait 1.5s...", Duration = 1.5}); task.wait(1.5); local hrp = char:WaitForChild("HumanoidRootPart", 10); if hrp then for i = 1, 3 do hrp.CFrame = lastDeathPosition; task.wait(0.1) end; lastDeathPosition = nil end end)
+    end
+    local hum = char:WaitForChild("Humanoid", 10); if hum then hum.Died:Connect(function() if autoDeathTP and char:FindFirstChild("HumanoidRootPart") then local currentPos = char.HumanoidRootPart.CFrame; if antiVoid and currentPos.Y < -20 then lastDeathPosition = nil else lastDeathPosition = currentPos end end end) end
+end
+LocalPlayer.CharacterAdded:Connect(OnCharacterAdded); if LocalPlayer.Character then OnCharacterAdded(LocalPlayer.Character) end
+
+task.spawn(function() while task.wait(0.1) do if autoAttack then pcall(function() local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool"); if tool then tool:Activate() end; VirtualUser:CaptureController(); VirtualUser:ClickButton1(Vector2.new()) end) end end end)
+RunService.Heartbeat:Connect(function() if autoPlayerTP and targetPlayer and targetPlayer.Character then local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"); local thrp = targetPlayer.Character:FindFirstChild("HumanoidRootPart"); if hrp and thrp then hrp.CFrame = thrp.CFrame * CFrame.new(0,0,-2) end end end)
 LocalPlayer.Idled:Connect(function() if autoAntiAFK then PerformAntiAFK() end end)
 
 ------------------------------------------------
 -- UI SETUP
 ------------------------------------------------
-local Window = Rayfield:CreateWindow({
-    Name = "Bustupid Hub | TIME: xx:05",
-    LoadingTitle = "Loading...",
-    LoadingSubtitle = "Dual Events",
-    KeySystem = false
-})
+local Window = Rayfield:CreateWindow({Name = "Bustupid Hub | SAFE PLATFORM", LoadingTitle = "Loading...", LoadingSubtitle = "Anti-Void Enabled", KeySystem = false})
 
--- TAB EVENT 1 (CŨ)
-local Event1Tab = Window:CreateTab("Event 1 (426)", 4483362458)
-Event1Tab:CreateSection("Location: 426.5 | -12.7 | -340.4")
+local EventTab = Window:CreateTab("Events", 4483362458)
+EventTab:CreateSection("--- DUAL FARM ---")
+EventTab:CreateToggle({Name = "Auto Farm BOTH (Loop 2s)", CurrentValue = autoTP_Both, Callback = function(v) autoTP_Both = v; if v then autoTP_Ev1 = false; autoTP_Ev2 = false end end})
 
-Event1Tab:CreateToggle({
-    Name = "Auto TP Event 1 (xx:05 Only)", 
-    CurrentValue = autoTP_Ev1,
-    Callback = function(v) 
-        autoTP_Ev1 = v 
-        if v then autoTP_Ev2 = false end -- Tự tắt Event 2 nếu bật Event 1
-    end
-})
+EventTab:CreateSection("--- SINGLE & MANUAL ---")
+EventTab:CreateToggle({Name = "Auto TP Event 1 Only", CurrentValue = autoTP_Ev1, Callback = function(v) autoTP_Ev1 = v; if v then autoTP_Both = false; autoTP_Ev2 = false end end})
+EventTab:CreateButton({Name = "TP Now -> Event 1 (426)", Callback = function() pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CF_EVENT_1 end) end})
+EventTab:CreateToggle({Name = "Auto TP Event 2 Only", CurrentValue = autoTP_Ev2, Callback = function(v) autoTP_Ev2 = v; if v then autoTP_Both = false; autoTP_Ev1 = false end end})
+EventTab:CreateButton({Name = "TP Now -> Event 2 (1136)", Callback = function() pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CF_EVENT_2 end) end})
 
-Event1Tab:CreateToggle({
-    Name = "Auto Hop Event 1", 
-    CurrentValue = autoHop_Ev1,
-    Callback = function(v) autoHop_Ev1 = v end
-})
+EventTab:CreateSection("--- SAFETY ---")
+EventTab:CreateToggle({Name = "Create Safe Platforms", CurrentValue = autoPlatform, Callback = function(v) autoPlatform = v; ManagePlatforms() end})
+EventTab:CreateToggle({Name = "Auto Hop (Event Time)", CurrentValue = autoHop_Event, Callback = function(v) autoHop_Event = v end})
 
-Event1Tab:CreateButton({
-    Name = "Teleport Event 1 NOW", 
-    Callback = function() pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CF_EVENT_1 end) end
-})
-
--- TAB EVENT 2 (MỚI)
-local Event2Tab = Window:CreateTab("Event 2 (1136)", 4483362458)
-Event2Tab:CreateSection("Location: 1136 | 2.3 | 527")
-
-Event2Tab:CreateToggle({
-    Name = "Auto TP Event 2 (xx:05 Only)", 
-    CurrentValue = autoTP_Ev2,
-    Callback = function(v) 
-        autoTP_Ev2 = v
-        if v then autoTP_Ev1 = false end -- Tự tắt Event 1 nếu bật Event 2
-    end
-})
-
-Event2Tab:CreateToggle({
-    Name = "Auto Hop Event 2", 
-    CurrentValue = autoHop_Ev2,
-    Callback = function(v) autoHop_Ev2 = v end
-})
-
-Event2Tab:CreateButton({
-    Name = "Teleport Event 2 NOW", 
-    Callback = function() pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CF_EVENT_2 end) end
-})
-
--- CÁC TAB CŨ
 local CombatTab = Window:CreateTab("Combat", 4483362458)
+CombatTab:CreateSection("--- VIP MOVEMENT ---")
+CombatTab:CreateToggle({Name = "Fly (Vip)", CurrentValue = false, Callback = function(v) ToggleFly(v) end})
+CombatTab:CreateSlider({Name = "Fly Speed", Range = {10, 300}, Increment = 5, Suffix = "Speed", CurrentValue = 50, Callback = function(v) flySpeed = v end})
+CombatTab:CreateToggle({Name = "No Clip (Wallhack)", CurrentValue = false, Callback = function(v) isNoclip = v; if v then noclipConnection = RunService.Stepped:Connect(function() if LocalPlayer.Character then for _, part in pairs(LocalPlayer.Character:GetChildren()) do if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end end end end) else if noclipConnection then noclipConnection:Disconnect() end end end})
+CombatTab:CreateSection("--- PVP ---")
 local function getPlayers() local t = {}; for _,p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then table.insert(t,p.Name) end end; return t end
 local dropdown = CombatTab:CreateDropdown({Name = "Select Player", Options = getPlayers(), Callback = function(v) if v and v[1] then targetPlayer = Players:FindFirstChild(v[1]) end end})
 CombatTab:CreateButton({Name = "Refresh Player", Callback = function() dropdown:Refresh(getPlayers()) end})
 CombatTab:CreateToggle({Name = "Auto TP Behind", CurrentValue = autoPlayerTP, Callback = function(v) autoPlayerTP = v end})
 CombatTab:CreateToggle({Name = "Auto Attack (Fast)", CurrentValue = autoAttack, Callback = function(v) autoAttack = v end})
-CombatTab:CreateToggle({Name = "Auto TP Back On Death", CurrentValue = autoDeathTP, Callback = function(v) autoDeathTP = v end})
 
 local ServerTab = Window:CreateTab("Server", 4483362458)
 ServerTab:CreateButton({Name = "Rejoin Server", Callback = function() QueueAutoLoad(); TeleportService:Teleport(game.PlaceId, LocalPlayer) end})
 ServerTab:CreateInput({Name = "Server ID", PlaceholderText = "JobId...", Callback = function(v) inputServerId = v end})
 ServerTab:CreateButton({Name = "Join Server ID", Callback = function() if inputServerId ~= "" then QueueAutoLoad(); TeleportService:TeleportToPlaceInstance(game.PlaceId, inputServerId, LocalPlayer) end end})
 ServerTab:CreateToggle({Name = "Auto Hop (Always)", CurrentValue = autoSafeHop, Callback = function(v) autoSafeHop = v end})
+-- [[ NÚT AUTOLOAD ĐÃ TRỞ LẠI ]] --
+ServerTab:CreateToggle({
+    Name = "Auto Load Script (After Hop)", 
+    CurrentValue = UserSettings.AutoLoadScript, 
+    Callback = function(v) UserSettings.AutoLoadScript = v end
+})
 
 local MiscTab = Window:CreateTab("Misc", 4483362458)
 MiscTab:CreateToggle({Name = "Super Anti-AFK", CurrentValue = autoAntiAFK, Callback = function(v) autoAntiAFK = v end})
 
-Rayfield:Notify({Title = "Time Updated", Content = "Event set to minute 5", Duration = 5})
+Rayfield:Notify({Title = "UI FIXED", Content = "AutoLoad Button Restored", Duration = 5})
