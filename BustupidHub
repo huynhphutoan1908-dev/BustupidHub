@@ -1,1 +1,610 @@
+-- FULL SCRIPT: BUSTUPID HUB - ĐẦY ĐỦ TÍNH NĂNG + MAGNET + KILL AURA
 
+local Players = game:GetService("Players")
+local VirtualUser = game:GetService("VirtualUser")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Anti AFK
+Players.LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "Bustupid Hub",
+    LoadingTitle = "Bustupid Hub",
+    LoadingSubtitle = "Magnet & Kill Aura - Tối ưu Multi-Tab",
+    ConfigurationSaving = { Enabled = false },
+    Discord = { Enabled = false },
+    KeySystem = false
+})
+
+-- ==================== TAB MAIN (MAGNET + KILL AURA) ====================
+local MainTab = Window:CreateTab("🏠 Main", 4483362748)
+
+-- 1. TÍNH NĂNG MAGNET VOID SHARD
+MainTab:CreateSection("Auto Farm / Magnet")
+
+local magnetEnabled = false
+local magnetRange = 420
+
+MainTab:CreateToggle({
+    Name = "🧲 Auto Magnet VoidShardPart",
+    CurrentValue = false,
+    Flag = "MagnetToggle",
+    Callback = function(state)
+        magnetEnabled = state
+        if magnetEnabled then
+            task.spawn(function()
+                while magnetEnabled do
+                    task.wait(0.07)
+                    
+                    local char = Players.LocalPlayer.Character
+                    local root = char and char:FindFirstChild("HumanoidRootPart")
+                    if not root then continue end
+                    
+                    for _, v in ipairs(workspace:GetDescendants()) do
+                        if v.Name == "VoidShardPart" and v:IsA("BasePart") then
+                            pcall(function()
+                                local dist = (v.Position - root.Position).Magnitude
+                                if dist <= magnetRange then
+                                    v.CanCollide = false
+                                    v.Anchored = false
+                                    v.CFrame = root.CFrame * CFrame.new(0, 4.5, 0)
+                                    
+                                    if firetouchinterest then
+                                        task.spawn(function()
+                                            firetouchinterest(root, v, 0)
+                                            task.wait(0.01)
+                                            firetouchinterest(root, v, 1)
+                                        end)
+                                    end
+                                end
+                            end)
+                        end
+                    end
+                end
+            end)
+            Rayfield:Notify({Title = "Magnet", Content = "Đã BẬT hút VoidShardPart", Duration = 3})
+        else
+            Rayfield:Notify({Title = "Magnet", Content = "Đã TẮT hút VoidShardPart", Duration = 3})
+        end
+    end
+})
+
+MainTab:CreateSlider({
+    Name = "Khoảng cách hút (Range)",
+    Range = {50, 2000},
+    Increment = 10,
+    Suffix = "Studs",
+    CurrentValue = 420,
+    Flag = "MagnetRangeSlider",
+    Callback = function(Value) magnetRange = Value end
+})
+
+-- 2. TÍNH NĂNG KILL AURA (ZOMBIES)
+MainTab:CreateSection("Combat / Kill Aura")
+
+local killAuraEnabled = false
+local k_MAX_TARGETS = 8
+local k_FIRE_DELAY = 0.03
+local k_lastFire = 0
+local k_CurrentWeapon = nil
+
+-- Theo dõi Vũ khí
+local function k_UpdateWeapon()
+    local character = Players.LocalPlayer.Character
+    if not character then
+        k_CurrentWeapon = nil
+        return
+    end
+    k_CurrentWeapon = nil
+    for _, v in ipairs(character:GetChildren()) do
+        if v:IsA("Tool") then
+            k_CurrentWeapon = v.Name
+            break
+        end
+    end
+end
+
+local function k_SetupCharacter(character)
+    k_UpdateWeapon()
+    character.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            k_CurrentWeapon = child.Name
+        end
+    end)
+    character.ChildRemoved:Connect(function(child)
+        if child:IsA("Tool") and k_CurrentWeapon == child.Name then
+            task.wait()
+            k_UpdateWeapon()
+        end
+    end)
+end
+
+if Players.LocalPlayer.Character then k_SetupCharacter(Players.LocalPlayer.Character) end
+Players.LocalPlayer.CharacterAdded:Connect(k_SetupCharacter)
+
+-- Lấy danh sách Zombie gần nhất
+local function k_GetClosestZombies()
+    local character = Players.LocalPlayer.Character
+    local hrp = character and character:FindFirstChild("HumanoidRootPart")
+    local ZombiesFolder = workspace:FindFirstChild("Zombies_Local")
+    
+    if not hrp or not ZombiesFolder then return {} end
+
+    local zombieList = {}
+    for _, zombie in ipairs(ZombiesFolder:GetChildren()) do
+        if zombie:IsA("Model") then
+            local pos = zombie:GetPivot().Position
+            local distance = (hrp.Position - pos).Magnitude
+            table.insert(zombieList, {Model = zombie, Distance = distance, Position = pos})
+        end
+    end
+
+    table.sort(zombieList, function(a, b) return a.Distance < b.Distance end)
+    return zombieList
+end
+
+-- Vòng lặp bắn
+RunService.Heartbeat:Connect(function()
+    if not killAuraEnabled then return end
+    if tick() - k_lastFire < k_FIRE_DELAY then return end
+    
+    -- An toàn: Tránh lỗi nếu game chưa load folder
+    local GunRemotes = ReplicatedStorage:FindFirstChild("GunRemotes")
+    local GunRemote = GunRemotes and GunRemotes:FindFirstChild("GunHit")
+    if not GunRemote then return end
+
+    k_lastFire = tick()
+
+    if not k_CurrentWeapon then k_UpdateWeapon() end
+    if not k_CurrentWeapon then return end
+
+    local targets = k_GetClosestZombies()
+    local sent = 0
+
+    for _, data in ipairs(targets) do
+        if sent >= k_MAX_TARGETS then break end
+
+        local zombie = data.Model
+        local zombieId = tonumber(zombie.Name:match("%d+"))
+
+        if zombieId then
+            GunRemote:FireServer(k_CurrentWeapon, zombieId, data.Position)
+            sent += 1
+        end
+    end
+end)
+
+MainTab:CreateToggle({
+    Name = "⚔️ Auto Kill Aura (Zombies)",
+    CurrentValue = false,
+    Flag = "KillAuraToggle",
+    Callback = function(state)
+        killAuraEnabled = state
+        if state then
+            Rayfield:Notify({Title = "Kill Aura", Content = "Đã BẬT Kill Aura", Duration = 3})
+        else
+            Rayfield:Notify({Title = "Kill Aura", Content = "Đã TẮT Kill Aura", Duration = 3})
+        end
+    end
+})
+
+MainTab:CreateSlider({
+    Name = "Delay bắn (Giây)",
+    Range = {0, 1},
+    Increment = 0.01,
+    Suffix = "s",
+    CurrentValue = 0.03,
+    Flag = "KillAuraDelaySlider",
+    Callback = function(Value) k_FIRE_DELAY = Value end
+})
+
+MainTab:CreateSlider({
+    Name = "Số lượng mục tiêu cùng lúc",
+    Range = {1, 20},
+    Increment = 1,
+    Suffix = "Zombies",
+    CurrentValue = 8,
+    Flag = "KillAuraTargetSlider",
+    Callback = function(Value) k_MAX_TARGETS = Value end
+})
+
+
+-- ==================== TAB SERVER ====================
+local ServerTab = Window:CreateTab("🌐 Server", 4483362748)
+
+ServerTab:CreateSection("Server Control")
+
+ServerTab:CreateParagraph({
+    Title = "Server ID Hiện Tại",
+    Content = game.JobId
+})
+
+ServerTab:CreateButton({
+    Name = "📋 Copy Server ID",
+    Callback = function()
+        setclipboard(game.JobId)
+        Rayfield:Notify({Title = "✅ Đã Copy", Content = "Server ID đã copy", Duration = 3})
+    end
+})
+
+ServerTab:CreateButton({
+    Name = "🔄 Rejoin Server",
+    Callback = function()
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId)
+    end
+})
+
+ServerTab:CreateButton({
+    Name = "🔀 Hop Server",
+    Callback = function()
+        Rayfield:Notify({Title = "Đang Hop Server...", Content = "Vui lòng chờ", Duration = 3})
+        TeleportService:Teleport(game.PlaceId)
+    end
+})
+
+ServerTab:CreateInput({
+    Name = "Join Server ID",
+    PlaceholderText = "Nhập JobId",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(JobId)
+        if JobId and #JobId > 10 then
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, JobId)
+        end
+    end
+})
+
+ServerTab:CreateButton({
+    Name = "👥 Join Server Vắng",
+    Callback = function()
+        Rayfield:Notify({Title = "Đang tìm...", Content = "Vui lòng chờ", Duration = 4})
+        local success, result = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+        end)
+        if success and result and result.data then
+            for _, server in ipairs(result.data) do
+                if server.playing < 8 and server.id ~= game.JobId then
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id)
+                    return
+                end
+            end
+        end
+    end
+})
+
+-- ==================== TAB TELEPORT ====================
+local TeleportTab = Window:CreateTab("🚀 Teleport", 4483362748)
+
+local selectedPlayer = nil
+local autoTeleport = false
+local autoTeleportConnection = nil
+local savedPosition1 = nil
+local savedPosition2 = nil
+
+local function getPlayerList()
+    local list = {}
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= Players.LocalPlayer then
+            table.insert(list, player.DisplayName .. " (" .. player.Name .. ")")
+        end
+    end
+    return list
+end
+
+TeleportTab:CreateSection("Teleport đến Player")
+
+local playerDropdown = TeleportTab:CreateDropdown({
+    Name = "Chọn Player",
+    Options = getPlayerList(),
+    CurrentOption = {},
+    MultipleOptions = false,
+    Callback = function(option)
+        local name = option[1]
+        for _, player in pairs(Players:GetPlayers()) do
+            if name == player.DisplayName .. " (" .. player.Name .. ")" then
+                selectedPlayer = player
+                break
+            end
+        end
+    end
+})
+
+TeleportTab:CreateButton({
+    Name = "Tele đến Player",
+    Callback = function()
+        if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
+            end
+        end
+    end
+})
+
+TeleportTab:CreateToggle({
+    Name = "Auto Teleport (Follow Player)",
+    CurrentValue = false,
+    Callback = function(state)
+        autoTeleport = state
+        if autoTeleport then
+            autoTeleportConnection = RunService.Heartbeat:Connect(function()
+                if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    local hrp = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        hrp.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
+                    end
+                end
+            end)
+        else
+            if autoTeleportConnection then autoTeleportConnection:Disconnect() end
+        end
+    end
+})
+
+TeleportTab:CreateSection("Lưu vị trí")
+
+TeleportTab:CreateButton({
+    Name = "💾 Lưu Điểm 1",
+    Callback = function()
+        local hrp = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if hrp then savedPosition1 = hrp.CFrame end
+    end
+})
+
+TeleportTab:CreateButton({
+    Name = "🚀 Teleport đến Điểm 1",
+    Callback = function()
+        local hrp = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if hrp and savedPosition1 then hrp.CFrame = savedPosition1 end
+    end
+})
+
+TeleportTab:CreateButton({
+    Name = "💾 Lưu Điểm 2",
+    Callback = function()
+        local hrp = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if hrp then savedPosition2 = hrp.CFrame end
+    end
+})
+
+TeleportTab:CreateButton({
+    Name = "🚀 Teleport đến Điểm 2",
+    Callback = function()
+        local hrp = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if hrp and savedPosition2 then hrp.CFrame = savedPosition2 end
+    end
+})
+
+-- ==================== TAB PLAYER ====================
+local PlayerTab = Window:CreateTab("👤 Player", 4483362748)
+
+local Character = Players.LocalPlayer.Character or Players.LocalPlayer.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+local HRP = Character:WaitForChild("HumanoidRootPart")
+
+local flying = false
+local flySpeed = 50
+local flyConnection, bodyVelocity, bodyGyro
+local noclipConnection, infiniteJumpConnection
+local godModeConnection, godLoop
+local espEnabled = false
+local boxEnabled = true
+local espObjects = {}
+
+-- Fly
+local function toggleFly(state)
+    flying = state
+    if flying then
+        bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.MaxForce = Vector3.new(9e9,9e9,9e9)
+        bodyVelocity.Parent = HRP
+        bodyGyro = Instance.new("BodyGyro")
+        bodyGyro.MaxTorque = Vector3.new(9e9,9e9,9e9)
+        bodyGyro.P = 9e4
+        bodyGyro.Parent = HRP
+
+        flyConnection = RunService.Heartbeat:Connect(function()
+            if not flying then return end
+            local cam = workspace.CurrentCamera
+            local dir = Vector3.zero
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0,1,0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir -= Vector3.new(0,1,0) end
+            bodyVelocity.Velocity = dir.Magnitude > 0 and dir.Unit * flySpeed or Vector3.zero
+            bodyGyro.CFrame = cam.CFrame
+        end)
+    else
+        if flyConnection then flyConnection:Disconnect() end
+        if bodyVelocity then bodyVelocity:Destroy() end
+        if bodyGyro then bodyGyro:Destroy() end
+    end
+end
+
+-- Noclip
+local function toggleNoclip(state)
+    if state then
+        noclipConnection = RunService.Stepped:Connect(function()
+            for _, p in pairs(Character:GetDescendants()) do
+                if p:IsA("BasePart") then p.CanCollide = false end
+            end
+        end)
+    else
+        if noclipConnection then noclipConnection:Disconnect() end
+    end
+end
+
+-- Infinite Jump
+local function toggleInfiniteJump(state)
+    if state then
+        infiniteJumpConnection = UserInputService.JumpRequest:Connect(function()
+            if Humanoid then Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end
+        end)
+    else
+        if infiniteJumpConnection then infiniteJumpConnection:Disconnect() end
+    end
+end
+
+-- God Mode VIP
+local function toggleGodMode(state)
+    if state then
+        Humanoid.MaxHealth = math.huge
+        Humanoid.Health = math.huge
+        godModeConnection = Humanoid.HealthChanged:Connect(function()
+            if Humanoid.Health < Humanoid.MaxHealth then Humanoid.Health = Humanoid.MaxHealth end
+        end)
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+        godLoop = task.spawn(function()
+            while task.wait(0.2) do
+                if not state or not Humanoid then break end
+                if Humanoid.Health < Humanoid.MaxHealth then Humanoid.Health = Humanoid.MaxHealth end
+            end
+        end)
+    else
+        if godModeConnection then godModeConnection:Disconnect() end
+        if godLoop then task.cancel(godLoop) end
+    end
+end
+
+-- ESP
+local function createESP(player)
+    if player == Players.LocalPlayer then return end
+    local box = Drawing.new("Square")
+    box.Visible = false
+    box.Color = Color3.fromRGB(0, 255, 100)
+    box.Thickness = 2
+    box.Filled = false
+
+    local nameText = Drawing.new("Text")
+    nameText.Visible = false
+    nameText.Color = Color3.fromRGB(255, 255, 255)
+    nameText.Size = 16
+    nameText.Center = true
+    nameText.Outline = true
+
+    local weaponText = Drawing.new("Text")
+    weaponText.Visible = false
+    weaponText.Color = Color3.fromRGB(255, 200, 0)
+    weaponText.Size = 14
+    weaponText.Center = true
+    weaponText.Outline = true
+
+    espObjects[player] = {box = box, name = nameText, weapon = weaponText}
+
+    local conn = RunService.RenderStepped:Connect(function()
+        if not espEnabled or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+            if box then box.Visible = false end
+            if nameText then nameText.Visible = false end
+            if weaponText then weaponText.Visible = false end
+            return
+        end
+        local hrp = player.Character.HumanoidRootPart
+        local pos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(hrp.Position)
+        if onScreen then
+            local distance = (workspace.CurrentCamera.CFrame.Position - hrp.Position).Magnitude
+            local size = math.clamp(2200 / distance, 35, 110)
+
+            if boxEnabled then
+                box.Size = Vector2.new(size, size * 1.7)
+                box.Position = Vector2.new(pos.X - size/2, pos.Y - size/1.2)
+                box.Visible = true
+            else
+                box.Visible = false
+            end
+
+            nameText.Text = player.DisplayName
+            nameText.Position = Vector2.new(pos.X, pos.Y - size/1.05)
+            nameText.Visible = true
+
+            local tool = player.Character:FindFirstChildOfClass("Tool")
+            weaponText.Text = tool and "🔫 " .. tool.Name or ""
+            weaponText.Position = Vector2.new(pos.X, pos.Y - size/1.35)
+            weaponText.Visible = tool ~= nil
+        else
+            box.Visible = false
+            nameText.Visible = false
+            weaponText.Visible = false
+        end
+    end)
+    table.insert(espObjects, conn)
+end
+
+local function toggleESP(state)
+    espEnabled = state
+    if state then
+        for _, p in pairs(Players:GetPlayers()) do createESP(p) end
+        Players.PlayerAdded:Connect(createESP)
+    else
+        for _, obj in pairs(espObjects) do
+            if obj.box then obj.box:Remove() end
+            if obj.name then obj.name:Remove() end
+            if obj.weapon then obj.weapon:Remove() end
+        end
+        espObjects = {}
+    end
+end
+
+-- UI Player
+PlayerTab:CreateSection("Movement")
+PlayerTab:CreateToggle({Name = "✈️ Fly", Callback = function(v) toggleFly(v) end})
+PlayerTab:CreateInput({Name = "Tốc độ bay", PlaceholderText = "50", Callback = function(t) local n = tonumber(t) if n then flySpeed = n end end})
+PlayerTab:CreateSlider({Name = "🏃 WalkSpeed", Range = {16, 300}, CurrentValue = 16, Callback = function(v) if Humanoid then Humanoid.WalkSpeed = v end end})
+PlayerTab:CreateToggle({Name = "👻 Noclip", Callback = function(v) toggleNoclip(v) end})
+PlayerTab:CreateToggle({Name = "♾️ Infinite Jump", Callback = function(v) toggleInfiniteJump(v) end})
+PlayerTab:CreateToggle({Name = "🛡️ God Mode (VIP)", Callback = function(v) toggleGodMode(v) end})
+
+PlayerTab:CreateSection("ESP Player")
+PlayerTab:CreateToggle({Name = "Bật ESP (Box + Tên + Vũ khí)", Callback = function(v) toggleESP(v) end})
+PlayerTab:CreateToggle({Name = "Hiện Box ESP", CurrentValue = true, Callback = function(v) boxEnabled = v end})
+
+-- ==================== TAB MISC ====================
+local MiscTab = Window:CreateTab("⚙️ Misc", 4483362748)
+
+MiscTab:CreateSection("FPS Boost")
+
+MiscTab:CreateButton({
+    Name = "🚀 Tối ưu FPS (Giữ màu)",
+    Callback = function()
+        local Lighting = game:GetService("Lighting")
+        local Workspace = game:GetService("Workspace")
+
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 9e9
+
+        for _, v in pairs(Lighting:GetChildren()) do
+            if v:IsA("PostEffect") then v.Enabled = false end
+        end
+
+        for _, v in pairs(Workspace:GetDescendants()) do
+            if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire") then
+                v.Enabled = false
+            end
+        end
+
+        for _, v in pairs(Workspace:GetDescendants()) do
+            if v:IsA("BasePart") then v.CastShadow = false end
+        end
+
+        Rayfield:Notify({Title = "✅ FPS Boosted", Content = "Đã tối ưu xong", Duration = 4})
+    end
+})
+
+-- ==================== TAB LOGS ====================
+local LogsTab = Window:CreateTab("📜 Logs", 4483362748)
+
+local LogsParagraph = LogsTab:CreateParagraph({
+    Title = "Lịch sử",
+    Content = "Chưa có log."
+})
+
+print("✅ BUSTUPID HUB ĐÃ LOAD THÀNH CÔNG!")
