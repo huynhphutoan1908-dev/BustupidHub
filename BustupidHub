@@ -1,5 +1,6 @@
 -- FULL SCRIPT: BUSTUPID HUB - ENGLISH VERSION (COPYRIGHT PROTECTED)
 -- Youtuber: @nongdanchamchi_33
+-- Update: Removed fake GodMode (Desync fix), kept CFrame WalkSpeed & SafeZone
 
 local Players = game:GetService("Players")
 local VirtualUser = game:GetService("VirtualUser")
@@ -26,10 +27,9 @@ local Window = Rayfield:CreateWindow({
     KeySystem = false
 })
 
--- ==================== TAB MAIN (MAGNET + KILL AURA) ====================
+-- ==================== TAB MAIN (MAGNET + COMBAT) ====================
 local MainTab = Window:CreateTab("🏠 Main", 4483362748)
 
--- BẢN QUYỀN TRÊN GIAO DIỆN CHÍNH
 MainTab:CreateParagraph({
     Title = "👑 COPYRIGHT WARNING",
     Content = "Script created & optimized by Youtuber: @nongdanchamchi_33\nSubscribe for more OP scripts!"
@@ -95,8 +95,8 @@ MainTab:CreateSlider({
     Callback = function(Value) magnetRange = Value end
 })
 
--- 2. TÍNH NĂNG KILL AURA (ZOMBIES)
-MainTab:CreateSection("Combat / Kill Aura")
+-- 2. TÍNH NĂNG KILL AURA CƠ BẢN (Gun Remote)
+MainTab:CreateSection("Combat / Kill Aura (Safe Mode)")
 
 local killAuraEnabled = false
 local k_MAX_TARGETS = 8
@@ -175,7 +175,6 @@ RunService.Heartbeat:Connect(function()
 
     for _, data in ipairs(targets) do
         if sent >= k_MAX_TARGETS then break end
-
         local zombie = data.Model
         local zombieId = tonumber(zombie.Name:match("%d+"))
 
@@ -187,15 +186,15 @@ RunService.Heartbeat:Connect(function()
 end)
 
 MainTab:CreateToggle({
-    Name = "⚔️ Auto Kill Aura (Zombies)",
+    Name = "🔫 Auto Kill Aura (GunHit)",
     CurrentValue = false,
     Flag = "KillAuraToggle",
     Callback = function(state)
         killAuraEnabled = state
         if state then
-            Rayfield:Notify({Title = "Kill Aura", Content = "Kill Aura Enabled!", Duration = 3})
+            Rayfield:Notify({Title = "Kill Aura", Content = "Safe Kill Aura Enabled!", Duration = 3})
         else
-            Rayfield:Notify({Title = "Kill Aura", Content = "Kill Aura Disabled!", Duration = 3})
+            Rayfield:Notify({Title = "Kill Aura", Content = "Safe Kill Aura Disabled!", Duration = 3})
         end
     end
 })
@@ -219,6 +218,102 @@ MainTab:CreateSlider({
     Flag = "KillAuraTargetSlider",
     Callback = function(Value) k_MAX_TARGETS = Value end
 })
+
+
+-- 3. TÍNH NĂNG INSTANT KILL AURA & SAFE ZONE 
+MainTab:CreateSection("Combat / Instant Kill (OP)")
+
+MainTab:CreateParagraph({
+    Title = "⚠️ Warning",
+    Content = "Instant Kill applies 9e9 damage. Optimized to prevent Server Lag/Remote Drop!"
+})
+
+-- Toggle Safe Zone (Floating)
+local safeZoneEnabled = false
+MainTab:CreateToggle({
+    Name = "☁️ Safe Zone (Fly in air)",
+    CurrentValue = false,
+    Flag = "SafeZoneToggle",
+    Callback = function(state)
+        safeZoneEnabled = state
+        local char = Players.LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        
+        if hum then
+            hum.HipHeight = state and 25 or 2
+        end
+        
+        if state then
+            Rayfield:Notify({Title = "Safe Zone", Content = "Floating active!", Duration = 3})
+        else
+            Rayfield:Notify({Title = "Safe Zone", Content = "Returned to ground!", Duration = 3})
+        end
+    end
+})
+
+Players.LocalPlayer.CharacterAdded:Connect(function(char)
+    if safeZoneEnabled then
+        task.wait(1)
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.HipHeight = 25 end
+    end
+end)
+
+-- Toggle Instant Kill
+local instantKillEnabled = false
+local inst_Z = nil
+local inst_D = nil
+
+MainTab:CreateToggle({
+    Name = "☠️ Instant Kill Aura (9e9 Damage)",
+    CurrentValue = false,
+    Flag = "InstantKillToggle",
+    Callback = function(state)
+        instantKillEnabled = state
+        
+        if instantKillEnabled then
+            inst_Z = nil 
+            
+            pcall(function()
+                inst_Z = require(Players.LocalPlayer.PlayerScripts.Controllers.ZombieClient).Zombies
+            end)
+            
+            if type(inst_Z) ~= "table" then
+                for _,v in pairs(getgc(true)) do
+                    if type(v)=="table" and rawget(v,"Zombies") and rawget(v,"ZombieModels") then
+                        inst_Z = v.Zombies
+                        break
+                    end
+                end
+            end
+            
+            local ZR = ReplicatedStorage:FindFirstChild("ZombieRemotes")
+            if ZR then inst_D = ZR:FindFirstChild("ZombieDamage") end
+            
+            Rayfield:Notify({Title = "OP Mode", Content = "Instant Kill Enabled!", Duration = 3})
+        else
+            Rayfield:Notify({Title = "OP Mode", Content = "Instant Kill Disabled!", Duration = 3})
+        end
+    end
+})
+
+-- VÒNG LẶP SÁT THƯƠNG TỐI ƯU
+task.spawn(function()
+    while task.wait(0.15) do 
+        if instantKillEnabled then
+            pcall(function() 
+                if inst_Z and inst_D then
+                    for id, data in pairs(inst_Z) do
+                        if data and not data.IsDying and data.Health > 0 then
+                            inst_D:FireServer(id, 9e9) 
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
 
 -- ==================== TAB SERVER ====================
 local ServerTab = Window:CreateTab("🌐 Server", 4483362748)
@@ -303,7 +398,7 @@ end
 
 TeleportTab:CreateSection("Player Teleport")
 
-local playerDropdown = TeleportTab:CreateDropdown({
+TeleportTab:CreateDropdown({
     Name = "Select Player",
     Options = getPlayerList(),
     CurrentOption = {},
@@ -396,10 +491,30 @@ local flying = false
 local flySpeed = 50
 local flyConnection, bodyVelocity, bodyGyro
 local noclipConnection, infiniteJumpConnection
-local godModeConnection, godLoop
 local espEnabled = false
 local boxEnabled = true
 local espObjects = {}
+
+-- CƠ CHẾ WALKSPEED MỚI (CFRAME BYPASS)
+local customWSEnabled = false
+local customWSValue = 50
+local wsLoop
+
+local function toggleCustomWalkSpeed(state)
+    customWSEnabled = state
+    if state then
+        wsLoop = RunService.Heartbeat:Connect(function(dt)
+            local char = Players.LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hum and hrp and hum.Health > 0 and hum.MoveDirection.Magnitude > 0 then
+                hrp.CFrame = hrp.CFrame + (hum.MoveDirection * (customWSValue * dt))
+            end
+        end)
+    else
+        if wsLoop then wsLoop:Disconnect() end
+    end
+end
 
 local function toggleFly(state)
     flying = state
@@ -451,26 +566,6 @@ local function toggleInfiniteJump(state)
         end)
     else
         if infiniteJumpConnection then infiniteJumpConnection:Disconnect() end
-    end
-end
-
-local function toggleGodMode(state)
-    if state then
-        Humanoid.MaxHealth = math.huge
-        Humanoid.Health = math.huge
-        godModeConnection = Humanoid.HealthChanged:Connect(function()
-            if Humanoid.Health < Humanoid.MaxHealth then Humanoid.Health = Humanoid.MaxHealth end
-        end)
-        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-        godLoop = task.spawn(function()
-            while task.wait(0.2) do
-                if not state or not Humanoid then break end
-                if Humanoid.Health < Humanoid.MaxHealth then Humanoid.Health = Humanoid.MaxHealth end
-            end
-        end)
-    else
-        if godModeConnection then godModeConnection:Disconnect() end
-        if godLoop then task.cancel(godLoop) end
     end
 end
 
@@ -552,12 +647,26 @@ local function toggleESP(state)
 end
 
 PlayerTab:CreateSection("Movement Mods")
+
+PlayerTab:CreateToggle({
+    Name = "🏃 Enable Custom WalkSpeed (Bypass)",
+    CurrentValue = false,
+    Callback = function(v) toggleCustomWalkSpeed(v) end
+})
+
+PlayerTab:CreateSlider({
+    Name = "WalkSpeed Value (CFrame)",
+    Range = {10, 300},
+    Increment = 1,
+    CurrentValue = 50,
+    Callback = function(v) customWSValue = v end
+})
+
 PlayerTab:CreateToggle({Name = "✈️ Fly", Callback = function(v) toggleFly(v) end})
 PlayerTab:CreateInput({Name = "Fly Speed", PlaceholderText = "50", Callback = function(t) local n = tonumber(t) if n then flySpeed = n end end})
-PlayerTab:CreateSlider({Name = "🏃 WalkSpeed", Range = {16, 300}, CurrentValue = 16, Callback = function(v) if Humanoid then Humanoid.WalkSpeed = v end end})
 PlayerTab:CreateToggle({Name = "👻 Noclip", Callback = function(v) toggleNoclip(v) end})
 PlayerTab:CreateToggle({Name = "♾️ Infinite Jump", Callback = function(v) toggleInfiniteJump(v) end})
-PlayerTab:CreateToggle({Name = "🛡️ God Mode", Callback = function(v) toggleGodMode(v) end})
+-- Đã xóa God Mode
 
 PlayerTab:CreateSection("ESP Options")
 PlayerTab:CreateToggle({Name = "Enable ESP (Box/Name/Weapon)", Callback = function(v) toggleESP(v) end})
@@ -606,4 +715,5 @@ local LogsParagraph = LogsTab:CreateParagraph({
 print("==================================================")
 print("✅ BUSTUPID HUB LOADED SUCCESSFULLY!")
 print("👑 Script by Youtuber: @nongdanchamchi_33")
+print("🔥 Update: Removed fake God Mode (Desync fix)")
 print("==================================================")
