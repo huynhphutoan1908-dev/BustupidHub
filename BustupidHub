@@ -1,6 +1,6 @@
 -- FULL SCRIPT: BUSTUPID HUB - ENGLISH VERSION (COPYRIGHT PROTECTED)
 -- Youtuber: @nongdanchamchi_33
--- Update: Removed fake GodMode (Desync fix), kept CFrame WalkSpeed & SafeZone
+-- Update: Added Auto Spin Galactic Crate (Anti-Crash/Anti-Spam) + English UI
 
 local Players = game:GetService("Players")
 local VirtualUser = game:GetService("VirtualUser")
@@ -35,7 +35,7 @@ MainTab:CreateParagraph({
     Content = "Script created & optimized by Youtuber: @nongdanchamchi_33\nSubscribe for more OP scripts!"
 })
 
--- 1. TÍNH NĂNG MAGNET VOID SHARD
+-- 1. MAGNET VOID SHARD
 MainTab:CreateSection("Auto Farm / Magnet")
 
 local magnetEnabled = false
@@ -78,9 +78,9 @@ MainTab:CreateToggle({
                     end
                 end
             end)
-            Rayfield:Notify({Title = "@nongdanchamchi_33", Content = "VoidShard Magnet Enabled!", Duration = 3})
+            Rayfield:Notify({Title = "Magnet", Content = "VoidShard Magnet Enabled!", Duration = 3})
         else
-            Rayfield:Notify({Title = "@nongdanchamchi_33", Content = "VoidShard Magnet Disabled!", Duration = 3})
+            Rayfield:Notify({Title = "Magnet", Content = "VoidShard Magnet Disabled!", Duration = 3})
         end
     end
 })
@@ -95,7 +95,7 @@ MainTab:CreateSlider({
     Callback = function(Value) magnetRange = Value end
 })
 
--- 2. TÍNH NĂNG KILL AURA CƠ BẢN (Gun Remote)
+-- 2. KILL AURA (Safe Mode)
 MainTab:CreateSection("Combat / Kill Aura (Safe Mode)")
 
 local killAuraEnabled = false
@@ -122,9 +122,7 @@ end
 local function k_SetupCharacter(character)
     k_UpdateWeapon()
     character.ChildAdded:Connect(function(child)
-        if child:IsA("Tool") then
-            k_CurrentWeapon = child.Name
-        end
+        if child:IsA("Tool") then k_CurrentWeapon = child.Name end
     end)
     character.ChildRemoved:Connect(function(child)
         if child:IsA("Tool") and k_CurrentWeapon == child.Name then
@@ -219,8 +217,7 @@ MainTab:CreateSlider({
     Callback = function(Value) k_MAX_TARGETS = Value end
 })
 
-
--- 3. TÍNH NĂNG INSTANT KILL AURA & SAFE ZONE 
+-- 3. INSTANT KILL AURA & SAFE ZONE 
 MainTab:CreateSection("Combat / Instant Kill (OP)")
 
 MainTab:CreateParagraph({
@@ -228,7 +225,6 @@ MainTab:CreateParagraph({
     Content = "Instant Kill applies 9e9 damage. Optimized to prevent Server Lag/Remote Drop!"
 })
 
--- Toggle Safe Zone (Floating)
 local safeZoneEnabled = false
 MainTab:CreateToggle({
     Name = "☁️ Safe Zone (Fly in air)",
@@ -239,9 +235,7 @@ MainTab:CreateToggle({
         local char = Players.LocalPlayer.Character
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         
-        if hum then
-            hum.HipHeight = state and 25 or 2
-        end
+        if hum then hum.HipHeight = state and 25 or 2 end
         
         if state then
             Rayfield:Notify({Title = "Safe Zone", Content = "Floating active!", Duration = 3})
@@ -259,7 +253,6 @@ Players.LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--- Toggle Instant Kill
 local instantKillEnabled = false
 local inst_Z = nil
 local inst_D = nil
@@ -273,10 +266,7 @@ MainTab:CreateToggle({
         
         if instantKillEnabled then
             inst_Z = nil 
-            
-            pcall(function()
-                inst_Z = require(Players.LocalPlayer.PlayerScripts.Controllers.ZombieClient).Zombies
-            end)
+            pcall(function() inst_Z = require(Players.LocalPlayer.PlayerScripts.Controllers.ZombieClient).Zombies end)
             
             if type(inst_Z) ~= "table" then
                 for _,v in pairs(getgc(true)) do
@@ -289,7 +279,6 @@ MainTab:CreateToggle({
             
             local ZR = ReplicatedStorage:FindFirstChild("ZombieRemotes")
             if ZR then inst_D = ZR:FindFirstChild("ZombieDamage") end
-            
             Rayfield:Notify({Title = "OP Mode", Content = "Instant Kill Enabled!", Duration = 3})
         else
             Rayfield:Notify({Title = "OP Mode", Content = "Instant Kill Disabled!", Duration = 3})
@@ -297,7 +286,6 @@ MainTab:CreateToggle({
     end
 })
 
--- VÒNG LẶP SÁT THƯƠNG TỐI ƯU
 task.spawn(function()
     while task.wait(0.15) do 
         if instantKillEnabled then
@@ -313,6 +301,117 @@ task.spawn(function()
         end
     end
 end)
+
+
+-- ==================== TAB GACHA / SPIN (NEW) ====================
+local GachaTab = Window:CreateTab("🎰 Gacha", 4483362748)
+
+GachaTab:CreateSection("Auto Spin Crate")
+
+local autoSpinEnabled = false
+local spinDelay = 3 -- Default spin delay to prevent server crash
+
+GachaTab:CreateToggle({
+    Name = "🚀 Auto Spin Galactic Crate",
+    CurrentValue = false,
+    Flag = "AutoSpinCrateToggle",
+    Callback = function(state)
+        autoSpinEnabled = state
+        
+        if state then
+            Rayfield:Notify({Title = "Gacha Time", Content = "Teleporting to crate and starting...", Duration = 3})
+            
+            task.spawn(function()
+                while autoSpinEnabled do
+                    task.wait(0.5)
+                    
+                    pcall(function()
+                        -- 1. Locate Crate
+                        local crateEvent = workspace:FindFirstChild("Event")
+                        local galacticCrate = crateEvent and crateEvent:FindFirstChild("GalacticCrate")
+                        local mainPart = galacticCrate and galacticCrate:FindFirstChild("MainPart")
+                        
+                        if mainPart then
+                            local prompt = mainPart:FindFirstChildWhichIsA("ProximityPrompt")
+                            local char = Players.LocalPlayer.Character
+                            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                            
+                            -- Auto-teleport if far away
+                            if hrp and (hrp.Position - mainPart.Position).Magnitude > 7 then
+                                hrp.CFrame = mainPart.CFrame + Vector3.new(0, 0, 4)
+                                task.wait(0.2)
+                            end
+                            
+                            -- Fire Proximity Prompt (Key E)
+                            if prompt and fireproximityprompt then
+                                fireproximityprompt(prompt, 1)
+                            end
+                        end
+                        
+                        task.wait(0.5) -- Wait for UI to pop up
+                        
+                        -- 2. Anti-Spam Click Logic
+                        local pGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
+                        local hasClicked = false
+                        
+                        if pGui then
+                            for _, v in pairs(pGui:GetDescendants()) do
+                                if v:IsA("TextButton") or v:IsA("ImageButton") then
+                                    
+                                    local btnText = (v:IsA("TextButton") and v.Text) or ""
+                                    for _, child in pairs(v:GetChildren()) do
+                                        if child:IsA("TextLabel") then
+                                            btnText = btnText .. child.Text
+                                        end
+                                    end
+                                    
+                                    -- Check for 50 Void/Shard OR FREE SPIN
+                                    if not hasClicked and ((btnText:match("50") and (btnText:match("Void") or btnText:match("Shard"))) or btnText:match("FREE SPIN")) then
+                                        hasClicked = true
+                                        
+                                        if getconnections then
+                                            local conns = getconnections(v.MouseButton1Click)
+                                            if #conns > 0 then
+                                                conns[1]:Fire()
+                                            else
+                                                local actConns = getconnections(v.Activated)
+                                                if #actConns > 0 then actConns[1]:Fire() end
+                                            end
+                                        elseif firesignal then
+                                            firesignal(v.MouseButton1Click)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        
+                        -- 3. Cooldown to prevent "Server Unreachable"
+                        if hasClicked then
+                            task.wait(spinDelay)
+                        end
+                    end)
+                end
+            end)
+        else
+            Rayfield:Notify({Title = "Gacha Time", Content = "Auto Spin Disabled!", Duration = 3})
+        end
+    end
+})
+
+GachaTab:CreateSlider({
+    Name = "Spin Delay (Seconds)",
+    Range = {1, 10},
+    Increment = 0.5,
+    Suffix = "s",
+    CurrentValue = 3,
+    Flag = "SpinDelaySlider",
+    Callback = function(Value) spinDelay = Value end
+})
+
+GachaTab:CreateParagraph({
+    Title = "💡 Quick Tip",
+    Content = "If you get 'Server Unreachable' errors, INCREASE the Spin Delay slider to let the game process the spin."
+})
 
 
 -- ==================== TAB SERVER ====================
@@ -495,7 +594,6 @@ local espEnabled = false
 local boxEnabled = true
 local espObjects = {}
 
--- CƠ CHẾ WALKSPEED MỚI (CFRAME BYPASS)
 local customWSEnabled = false
 local customWSValue = 50
 local wsLoop
@@ -666,7 +764,6 @@ PlayerTab:CreateToggle({Name = "✈️ Fly", Callback = function(v) toggleFly(v)
 PlayerTab:CreateInput({Name = "Fly Speed", PlaceholderText = "50", Callback = function(t) local n = tonumber(t) if n then flySpeed = n end end})
 PlayerTab:CreateToggle({Name = "👻 Noclip", Callback = function(v) toggleNoclip(v) end})
 PlayerTab:CreateToggle({Name = "♾️ Infinite Jump", Callback = function(v) toggleInfiniteJump(v) end})
--- Đã xóa God Mode
 
 PlayerTab:CreateSection("ESP Options")
 PlayerTab:CreateToggle({Name = "Enable ESP (Box/Name/Weapon)", Callback = function(v) toggleESP(v) end})
@@ -715,5 +812,5 @@ local LogsParagraph = LogsTab:CreateParagraph({
 print("==================================================")
 print("✅ BUSTUPID HUB LOADED SUCCESSFULLY!")
 print("👑 Script by Youtuber: @nongdanchamchi_33")
-print("🔥 Update: Removed fake God Mode (Desync fix)")
+print("🔥 Update: Gacha Tab (Anti-Crash) + English UI")
 print("==================================================")
