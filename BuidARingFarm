@@ -1,6 +1,6 @@
 -- ==================================================
 -- FULL SCRIPT: BUSTUPID HUB - FLUENT MODDED VERSION
--- Integrated: AutoFarm, Egg, Seed, Gear, Compost, Queen Bee (Lag Fix), Alien
+-- Integrated: AutoFarm, Egg, Seed, Gear, Compost, Queen Bee, Alien, Plant Rush (Max 10 Targets)
 -- ==================================================
 
 local Players = game:GetService("Players")
@@ -195,7 +195,8 @@ local Config = {
     CompostFloor = 2, CompostTargetSeeds = {}, CompostTargetRanks = {}, AutoCompost = false,
     AutoSell = false,
     AutoQueenBee = false,
-    AutoAlien = false
+    AutoAlien = false,
+    AutoPlantRush = false
 }
 
 local BuySeedResponses = {}
@@ -460,10 +461,9 @@ AutoSellToggle:OnChanged(function(v)
     if v then task.spawn(function() while Config.AutoSell do pcall(function() SellCratesRemote:FireServer() end) task.wait(0.5) end end) end 
 end)
 
--- ==================== TAB EVENT (QUEEN BEE & ALIEN) ====================
+-- ==================== TAB EVENT ====================
 
-
-local function equipToken()
+local function equipTokenBee()
     local char = LocalPlayer.Character
     local backpack = LocalPlayer:FindFirstChild("Backpack")
     local humanoid = char and char:FindFirstChildOfClass("Humanoid")
@@ -494,8 +494,6 @@ EventTab:AddToggle("AutoQueenBee", { Title = "Auto Queen Bee Event", Default = f
                 if not rootPart then task.wait(0.5) continue end
 
                 local foundHoneycomb = false
-
-                -- BƯỚC 1: Lấy Token (Quét trực tiếp lớp ngoài cùng chống lag)
                 for _, obj in ipairs(workspace:GetChildren()) do
                     if obj.Name == "Honeycomb" then
                         local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
@@ -512,9 +510,8 @@ EventTab:AddToggle("AutoQueenBee", { Title = "Auto Queen Bee Event", Default = f
                     end
                 end
                 
-                -- BƯỚC 2: Bỏ Token vào Hũ
                 if not foundHoneycomb then
-                    if equipToken() then
+                    if equipTokenBee() then
                         for _, obj in ipairs(workspace:GetChildren()) do
                             if obj.Name:match("Honey") or obj.Name == "HoneyJarMachine" or obj.Name == "HoneypotSpawn" then
                                 local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
@@ -531,7 +528,6 @@ EventTab:AddToggle("AutoQueenBee", { Title = "Auto Queen Bee Event", Default = f
                         end
                     end
                 end
-                
                 task.wait(0.5) 
             end 
         end) 
@@ -539,11 +535,10 @@ EventTab:AddToggle("AutoQueenBee", { Title = "Auto Queen Bee Event", Default = f
 end)
 
 
-
 local AlienRemotes = ReplicatedStorage:WaitForChild("Remotes"):FindFirstChild("AlienInvasion")
 local MothershipDrop = AlienRemotes and AlienRemotes:FindFirstChild("MothershipDrop")
 
-EventTab:AddToggle("AutoAlienEvent", { Title = "Auto Alien Event", Default = false }):OnChanged(function(v)
+EventTab:AddToggle("AutoAlienEvent", { Title = "Auto Alien Event (Hứng Đồ)", Default = false }):OnChanged(function(v)
     Config.AutoAlien = v
 end)
 
@@ -554,7 +549,6 @@ if MothershipDrop then
             local rootPart = char and char:FindFirstChild("HumanoidRootPart")
             if rootPart then
                 rootPart.CFrame = CFrame.new(dropPosition)
-                
                 task.delay(0.2, function()
                     for _, obj in ipairs(workspace:GetChildren()) do
                         local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
@@ -570,6 +564,93 @@ if MothershipDrop then
         end
     end)
 end
+
+
+local function isShooterTool(tool, pConfig)
+    if not tool or not tool:IsA("Tool") then return false end
+    return tool:GetAttribute(pConfig.Shooter.Attribute) == true or tool.Name == pConfig.Shooter.ToolName
+end
+
+local function getPlantTargets(origin, pConfig)
+    local runtime = workspace:FindFirstChild("InteractiveEvents") and workspace.InteractiveEvents:FindFirstChild("PlantRush")
+    if not runtime then return {} end
+
+    local targets = {}
+    for _, model in ipairs(runtime:GetDescendants()) do
+        if model:IsA("Model") and model:GetAttribute("PlantRushId") then
+            local part = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart", true) or model:FindFirstChildWhichIsA("BasePart", true)
+            if part then
+                local dist = (part.Position - origin).Magnitude
+                if dist > 0 and dist <= (pConfig.Shooter.Range or 100) then
+                    table.insert(targets, {part = part, dist = dist})
+                end
+            end
+        end
+    end
+    table.sort(targets, function(a, b) return a.dist < b.dist end)
+    return targets
+end
+
+EventTab:AddToggle("AutoPlantRush", { Title = "Auto Plant Rush (Kill Aura)", Default = false }):OnChanged(function(v)
+    Config.AutoPlantRush = v
+    if v then
+        task.spawn(function()
+            local PlantRushConfig
+            pcall(function() PlantRushConfig = require(ReplicatedStorage.Shared.PlantRushConfig) end)
+            local prRemotes = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("PlantRush")
+            local shootRemote = prRemotes and prRemotes:FindFirstChild("Shoot")
+
+            if not PlantRushConfig or not shootRemote then
+                Fluent:Notify({Title="Error", Content="Plant Rush module not found!", Duration=3})
+                Config.AutoPlantRush = false
+                return
+            end
+
+            while Config.AutoPlantRush do
+                local char = LocalPlayer.Character
+                if char then
+                    local tool = char:FindFirstChildOfClass("Tool")
+                    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+
+                    -- Auto Equip súng
+                    if not isShooterTool(tool, PlantRushConfig) and backpack then
+                        for _, item in ipairs(backpack:GetChildren()) do
+                            if isShooterTool(item, PlantRushConfig) then
+                                local hum = char:FindFirstChildOfClass("Humanoid")
+                                if hum then hum:EquipTool(item) tool = item break end
+                            end
+                        end
+                    end
+
+                    -- Bắn mục tiêu (Kill Aura tự bắn tối đa 10 con)
+                    if tool and isShooterTool(tool, PlantRushConfig) then
+                        local cam = workspace.CurrentCamera
+                        local origin = cam and cam.CFrame.Position or (char.PrimaryPart and char.PrimaryPart.Position) or Vector3.zero
+                        local direction = cam and cam.CFrame.LookVector or Vector3.new(0, 0, -1)
+
+                        local targets = getPlantTargets(origin, PlantRushConfig)
+                        local positions = {}
+                        local maxTargets = 10 
+
+                        for i = 1, math.min(maxTargets, #targets) do
+                            table.insert(positions, targets[i].part.Position)
+                        end
+
+                        if #positions == 0 then
+                            table.insert(positions, origin + direction.Unit * (PlantRushConfig.Shooter.Range or 100))
+                        end
+
+                        for _, targetPos in ipairs(positions) do
+                            local shotDirection = (targetPos - origin).Magnitude > 0 and (targetPos - origin).Unit or direction.Unit
+                            pcall(function() shootRemote:FireServer(origin, shotDirection, targetPos) end)
+                        end
+                    end
+                end
+                task.wait(1 / (PlantRushConfig.Shooter.ShotsPerSecond or 10))
+            end
+        end)
+    end
+end)
 
 -- ==================== TAB SERVER ====================
 ServerTab:AddSection("Server Control")
