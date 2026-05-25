@@ -1,0 +1,656 @@
+-- ==================================================
+-- FULL SCRIPT: BUSTUPID HUB - FLUENT MODDED VERSION
+-- Integrated: AutoFarm, Egg, Seed, Gear, Compost, Queen Bee (Lag Fix), Alien
+-- ==================================================
+
+local Players = game:GetService("Players")
+local VirtualUser = game:GetService("VirtualUser")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+
+-- ==================== ANTI AFK ====================
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+-- ==================== PRIVACY MODE (CENSOR NAME) ====================
+local realName = LocalPlayer.Name
+local realDisplayName = LocalPlayer.DisplayName
+
+local function censorName(name)
+    if #name <= 3 then return name .. "..." end
+    return string.sub(name, 1, 3) .. "........"
+end
+
+local maskedName = censorName(realName)
+local maskedDisplayName = censorName(realDisplayName)
+local prefixName = string.sub(realName, 1, 6)
+local prefixDisplay = string.sub(realDisplayName, 1, 6)
+
+local function isTextObject(obj)
+    return obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")
+end
+
+local function censorGuiText(element)
+    if not isTextObject(element) then return end
+    local success, txt = pcall(function() return element.Text end)
+    if not success or not txt or txt == "" then return end
+
+    if txt:find(prefixDisplay, 1, true) and not txt:find(maskedDisplayName, 1, true) and txt ~= "Bustupid Hub" then
+        element.Text = maskedDisplayName
+    elseif txt:find(prefixName, 1, true) and not txt:find(maskedName, 1, true) then
+        element.Text = "@" .. maskedName
+    end
+end
+
+local function scanGui(gui)
+    if not gui or not gui:IsA("ScreenGui") then return end
+    if gui.Name:find("Roblox") or gui.Name:find("Core") then return end
+    for _, element in ipairs(gui:GetDescendants()) do censorGuiText(element) end
+end
+
+local function watchGui(gui)
+    if not gui or not gui:IsA("ScreenGui") then return end
+    if gui.Name:find("Roblox") or gui.Name:find("Core") then return end
+    gui.DescendantAdded:Connect(function(descendant) censorGuiText(descendant) end)
+    scanGui(gui)
+end
+
+local function scanAllGui()
+    pcall(function() for _, gui in ipairs(game:GetService("CoreGui"):GetChildren()) do scanGui(gui) end end)
+    pcall(function() for _, gui in ipairs(LocalPlayer:WaitForChild("PlayerGui"):GetChildren()) do scanGui(gui) end end)
+end
+
+local function watchGuiContainer(container)
+    if not container then return end
+    container.ChildAdded:Connect(function(child) if child:IsA("ScreenGui") then watchGui(child) end end)
+    for _, child in ipairs(container:GetChildren()) do if child:IsA("ScreenGui") then watchGui(child) end end
+end
+
+watchGuiContainer(game:GetService("CoreGui"))
+watchGuiContainer(LocalPlayer:WaitForChild("PlayerGui"))
+
+task.spawn(function() while task.wait(2) do scanAllGui() end end)
+
+-- ==================== INIT FLUENT ====================
+local Fluent = loadstring(game:HttpGet("https://github.com/StyearX/Fluent-Modded/releases/download/Fluent/FluentLite"))()
+local SaveManager = Fluent.SaveManager
+local InterfaceManager = Fluent.InterfaceManager
+local FloatingButtonManager = Fluent.FloatingButtonManager
+
+Fluent:RegisterCustomTheme("MyTheme", {
+    Accent = Color3.fromRGB(96, 205, 255),
+    AcrylicMain = Color3.fromRGB(20, 20, 30),
+    AcrylicBorder = Color3.fromRGB(50, 50, 70),
+    AcrylicGradient = ColorSequence.new(Color3.fromRGB(20, 20, 30), Color3.fromRGB(10, 10, 20)),
+    AcrylicNoise = 0.8,
+    TitleBarLine = Color3.fromRGB(50, 50, 70),
+    Tab = Color3.fromRGB(30, 30, 45),
+    Element = Color3.fromRGB(25, 25, 38),
+    ElementBorder = Color3.fromRGB(50, 50, 70),
+    InElementBorder = Color3.fromRGB(60, 60, 85),
+    ElementTransparency = 0.85,
+    ToggleSlider = Color3.fromRGB(40, 40, 60),
+    ToggleToggled = Color3.fromRGB(96, 205, 255),
+    SliderRail = Color3.fromRGB(40, 40, 60),
+    DropdownFrame = Color3.fromRGB(20, 20, 32),
+    DropdownHolder = Color3.fromRGB(15, 15, 25),
+    DropdownBorder = Color3.fromRGB(50, 50, 70),
+    DropdownOption = Color3.fromRGB(28, 28, 42),
+    Keybind = Color3.fromRGB(28, 28, 42),
+    Input = Color3.fromRGB(18, 18, 28),
+    InputFocused = Color3.fromRGB(12, 12, 20),
+    InputIndicator = Color3.fromRGB(60, 60, 90),
+    InputIndicatorFocus = Color3.fromRGB(96, 205, 255),
+    Dialog = Color3.fromRGB(15, 15, 25),
+    DialogHolder = Color3.fromRGB(12, 12, 20),
+    DialogHolderLine = Color3.fromRGB(40, 40, 60),
+    DialogButton = Color3.fromRGB(22, 22, 35),
+    DialogButtonBorder = Color3.fromRGB(50, 50, 70),
+    DialogBorder = Color3.fromRGB(50, 50, 70),
+    DialogInput = Color3.fromRGB(18, 18, 28),
+    DialogInputLine = Color3.fromRGB(60, 60, 90),
+    Text = Color3.fromRGB(240, 240, 255),
+    SubText = Color3.fromRGB(140, 140, 175),
+    Hover = Color3.fromRGB(35, 35, 55),
+    HoverChange = 0.04,
+    ShineEnabled = true,
+    StrokeShine = false,
+    StrokeDark = Color3.fromRGB(40, 40, 60),
+    IconColor = Color3.fromRGB(96, 205, 255),
+    IconSize = 18,
+    Background = nil,
+    BackgroundTransparency = 0,
+    ThemeAccentColors = { Color3.fromRGB(96, 205, 255) },
+})
+
+local Window = Fluent:CreateWindow({
+    Title = "Bustupid Hub",
+    SubTitle = "dev : @nongdanchamchi_33",
+    TabWidth = 120, 
+    Size = UDim2.fromOffset(450, 350), 
+    Acrylic = true,
+    Theme = "MyTheme",
+    MinimizeKey = Enum.KeyCode.LeftControl,
+    UserInfo = true,
+})
+
+-- ==================== INIT TABS ====================
+local MainTab     = Window:AddTab({ Title = "Main",     Icon = "solar/home-bold" })
+local UpgradeTab  = Window:AddTab({ Title = "Upgrade",  Icon = "solar/shield-bold" })
+local EventTab    = Window:AddTab({ Title = "Event",    Icon = "solar/star-bold" })
+local ServerTab   = Window:AddTab({ Title = "Server",   Icon = "solar/server-square-bold" })
+local TeleportTab = Window:AddTab({ Title = "Teleport", Icon = "solar/map-point-bold" })
+local PlayerTab   = Window:AddTab({ Title = "Player",   Icon = "solar/user-bold" })
+local MiscTab     = Window:AddTab({ Title = "Misc",     Icon = "solar/settings-bold" })
+local SettingsTab = Window:AddTab({ Title = "Settings", Icon = "gravity/archive" })
+
+-- ==================== DATA & REMOTES ====================
+local Registry = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Registry"))
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local TransactionRemote = Remotes:WaitForChild("EggShop"):WaitForChild("Transaction")
+local RollEggRemote = Remotes:WaitForChild("RollEgg")
+local SellCratesRemote = Remotes:WaitForChild("SellCrates")
+local RollSeedsRemote = Remotes:WaitForChild("RollSeeds")
+local BuySeedRemote = Remotes:WaitForChild("BuySeed")
+local GearRemote = Remotes:WaitForChild("Gear"):WaitForChild("Transaction")
+local ComposterRemotes = Remotes:WaitForChild("Composter")
+local InsertSeedRemote = ComposterRemotes:WaitForChild("InsertSeed")
+local PullLeverRemote = ComposterRemotes:WaitForChild("PullLever")
+local RequestStateRemote = ComposterRemotes:WaitForChild("RequestState")
+
+local eggList, seedList, rankList, gearList = {}, {}, {}, {}
+pcall(function()
+    for _, egg in pairs(ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Eggs"):GetChildren()) do
+        table.insert(eggList, egg.Name)
+    end
+    local gearFolder = ReplicatedStorage.Assets:FindFirstChild("Gear")
+    if gearFolder then
+        for _, item in pairs(gearFolder:GetChildren()) do
+            if item.Name ~= "Part" then table.insert(gearList, item.Name) end
+        end
+    end
+    local rarityOrder = {}
+    local rCount = 1
+    for rName, rarityData in pairs(Registry.Rarities) do
+        local order = (type(rarityData) == "table" and rarityData.Order) or rCount
+        rarityOrder[rName] = order
+        table.insert(rankList, rName)
+        rCount = rCount + 1
+    end
+    table.sort(rankList, function(a, b) return (rarityOrder[a] or 0) < (rarityOrder[b] or 0) end)
+    for seedName in pairs(Registry.Plants) do table.insert(seedList, seedName) end
+    table.sort(seedList, function(a, b) return a:lower() < b:lower() end)
+end)
+
+local Config = {
+    TargetEggs = {}, Snipe = false, SnipeAllEggs = false,
+    TargetSeeds = {}, TargetRanks = {}, AutoSeeds = false,
+    TargetGears = {}, SnipeGear = false, SnipeAllGears = false,
+    CompostFloor = 2, CompostTargetSeeds = {}, CompostTargetRanks = {}, AutoCompost = false,
+    AutoSell = false,
+    AutoQueenBee = false,
+    AutoAlien = false
+}
+
+local BuySeedResponses = {}
+if BuySeedRemote:IsA("RemoteEvent") then
+    BuySeedRemote.OnClientEvent:Connect(function(index, success)
+        if type(index) == "number" then BuySeedResponses[index] = success end
+    end)
+end
+
+local cachedSeedsInventory = nil
+local function matchesTargetSeed(seedName)
+    local plantData = Registry.Plants[seedName]
+    return Config.TargetSeeds[seedName] or (plantData and Config.TargetRanks[plantData.Rarity])
+end
+local function getSeedsInventory()
+    if cachedSeedsInventory then return cachedSeedsInventory end
+    for _, obj in pairs(getgc(true)) do
+        if type(obj) == "table" and rawget(obj, "SeedsInventory") then
+            cachedSeedsInventory = obj.SeedsInventory
+            return cachedSeedsInventory
+        end
+    end
+    return nil
+end
+
+local function findCashValue(root)
+    for _, child in ipairs(root:GetChildren()) do
+        if child:IsA("IntValue") or child:IsA("NumberValue") then
+            local name = child.Name:lower()
+            if name:match("cash") or name:match("money") or name:match("coin") or name:match("gold") or name:match("balance") or name:match("credit") then
+                return child.Value
+            end
+        end
+        if #child:GetChildren() > 0 then
+            local val = findCashValue(child)
+            if val then return val end
+        end
+    end
+    return nil
+end
+
+local function getPlayerCash()
+    local player = Players.LocalPlayer
+    if not player then return nil end
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        local cash = findCashValue(leaderstats)
+        if cash then return cash end
+    end
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if playerGui then
+        local cash = findCashValue(playerGui)
+        if cash then return cash end
+    end
+    return nil
+end
+
+local function waitForCash(amount)
+    local lastCash = getPlayerCash() or 0
+    local noProgressCount = 0
+    local maxNoProgress = 120
+    while Config.AutoSeeds do
+        local cash = getPlayerCash()
+        if cash and cash >= amount then return true end
+        if cash and cash > lastCash then lastCash = cash noProgressCount = 0 else noProgressCount = noProgressCount + 1 end
+        if noProgressCount >= maxNoProgress then return false end
+        task.wait(1)
+    end
+    return false
+end
+
+local function tryBuySeed(index)
+    if BuySeedRemote:IsA("RemoteFunction") then
+        local ok, result = pcall(function() return BuySeedRemote:InvokeServer(index) end)
+        if not ok then return false, "error" end
+        if result == true then return true, "ok" elseif result == false then return false, "cannot_afford" else return false, "unknown" end
+    else
+        local ok = pcall(function() BuySeedRemote:FireServer(index) end)
+        if not ok then return false, "error" end
+        local deadline = os.clock() + 3
+        while os.clock() < deadline do
+            if BuySeedResponses[index] ~= nil then
+                local success = BuySeedResponses[index]
+                BuySeedResponses[index] = nil
+                if success then return true, "ok" else return false, "cannot_afford" end
+            end
+            task.wait(0.05)
+        end
+        return false, "unknown"
+    end
+end
+
+-- ==================== TAB MAIN: AUTO FARM ====================
+MainTab:AddSection("EGG SNIPER")
+local EggDrop = MainTab:AddDropdown("EggDrop", { Title = "Select Egg(s)", Values = eggList, Multi = true, Default = {} })
+EggDrop:OnChanged(function(Value)
+    Config.TargetEggs = {}
+    for k, v in pairs(Value) do if v then Config.TargetEggs[k] = true end end
+end)
+
+local AutoBuyEggToggle = MainTab:AddToggle("AutoBuyEgg", { Title = "Auto Buy Selected Eggs", Default = false })
+AutoBuyEggToggle:OnChanged(function(v)
+    Config.Snipe = v 
+    if v then task.spawn(function() while Config.Snipe do pcall(function()
+        local myStocks = ReplicatedStorage:FindFirstChild("EggStocks") and ReplicatedStorage.EggStocks:FindFirstChild(Players.LocalPlayer.Name)
+        if myStocks then
+            for i = 1, 5 do if not Config.Snipe then break end
+                local p = myStocks:FindFirstChild("Podium"..i)
+                if p and Config.TargetEggs[p.Value] then
+                    local s, _, n = TransactionRemote:InvokeServer("BuyEgg", i)
+                    if s and n then RollEggRemote:FireServer(n) RollEggRemote:FireServer(n, "ClaimRolledPet") end
+                end
+            end
+        end
+    end) task.wait(0.5) end end) end 
+end)
+
+local AutoBuyAllEggToggle = MainTab:AddToggle("AutoBuyAllEgg", { Title = "Auto Buy All Eggs", Default = false })
+AutoBuyAllEggToggle:OnChanged(function(v)
+    Config.SnipeAllEggs = v 
+    if v then task.spawn(function() while Config.SnipeAllEggs do pcall(function()
+        local myStocks = ReplicatedStorage:FindFirstChild("EggStocks") and ReplicatedStorage.EggStocks:FindFirstChild(Players.LocalPlayer.Name)
+        if myStocks then
+            for i = 1, 5 do if not Config.SnipeAllEggs then break end
+                local p = myStocks:FindFirstChild("Podium"..i)
+                if p then
+                    local s, _, n = TransactionRemote:InvokeServer("BuyEgg", i)
+                    if s and n then RollEggRemote:FireServer(n) RollEggRemote:FireServer(n, "ClaimRolledPet") end
+                end
+            end
+        end
+    end) task.wait(0.5) end end) end 
+end)
+
+MainTab:AddSection("SEED SNIPER")
+local SeedDrop = MainTab:AddDropdown("SeedDrop", { Title = "Select Seed Name(s)", Values = seedList, Multi = true, Default = {} })
+SeedDrop:OnChanged(function(Value)
+    Config.TargetSeeds = {}
+    for k, v in pairs(Value) do if v then Config.TargetSeeds[k] = true end end
+end)
+
+local RankDrop = MainTab:AddDropdown("RankDrop", { Title = "Select Seed Rarity", Values = rankList, Multi = true, Default = {} })
+RankDrop:OnChanged(function(Value)
+    Config.TargetRanks = {}
+    for k, v in pairs(Value) do if v then Config.TargetRanks[k] = true end end
+end)
+
+local AutoRollBuyToggle = MainTab:AddToggle("AutoRollBuy", { Title = "Auto Roll & Buy", Default = false })
+AutoRollBuyToggle:OnChanged(function(v)
+    Config.AutoSeeds = v 
+    if v then task.spawn(function() while Config.AutoSeeds do pcall(function()
+        RollSeedsRemote:FireServer()
+        local res = nil
+        local conn
+        conn = RollSeedsRemote.OnClientEvent:Connect(function(...)
+            local args = {...}
+            for _, arg in ipairs(args) do if type(arg) == "table" then res = arg break end end
+            if conn then conn:Disconnect() end
+        end)
+        local t = os.clock()
+        while not res and (os.clock() - t) < 3 do task.wait(0.1) end
+        if conn and conn.Connected then conn:Disconnect() end
+        if res then
+            local bought = false
+            for i, name in pairs(res) do
+                if matchesTargetSeed(name) then
+                    local plantData = Registry.Plants[name]
+                    local cost = (plantData and plantData.Cost) or 0
+                    while Config.AutoSeeds do
+                        local ok, reason = tryBuySeed(i)
+                        if ok then bought = true break
+                        elseif reason == "cannot_afford" then
+                            if cost > 0 then local got = waitForCash(cost) if not got then end else task.wait(2) end
+                            if not Config.AutoSeeds then break end
+                        elseif reason == "unknown" then task.wait(1)
+                        elseif reason == "error" then Config.AutoSeeds = false break
+                        else break end
+                    end
+                    if bought then break end
+                end
+            end
+            if bought then task.wait(0.8) else task.wait(0.4) end
+        else task.wait(0.8) end
+    end) task.wait(0.1) end end) end 
+end)
+
+MainTab:AddSection("GEAR SHOP")
+local GearDrop = MainTab:AddDropdown("GearDrop", { Title = "Select Gear(s)", Values = gearList, Multi = true, Default = {} })
+GearDrop:OnChanged(function(Value)
+    Config.TargetGears = {}
+    for k, v in pairs(Value) do if v then Config.TargetGears[k] = true end end
+end)
+
+local AutoBuyGearToggle = MainTab:AddToggle("AutoBuyGear", { Title = "Auto Buy Selected Gear", Default = false })
+AutoBuyGearToggle:OnChanged(function(v)
+    Config.SnipeGear = v 
+    if v then task.spawn(function() while Config.SnipeGear do pcall(function()
+        local myStocks = ReplicatedStorage:FindFirstChild("GearStocks") and ReplicatedStorage.GearStocks:FindFirstChild(Players.LocalPlayer.Name)
+        if myStocks and GearRemote then
+            for gearName, _ in pairs(Config.TargetGears) do if not Config.SnipeGear then break end
+                local stockValue = myStocks:FindFirstChild(gearName)
+                if stockValue and stockValue.Value > 0 then GearRemote:InvokeServer(gearName) task.wait(0.5) end
+            end
+        end
+    end) task.wait(1) end end) end 
+end)
+
+local AutoBuyAllGearToggle = MainTab:AddToggle("AutoBuyAllGear", { Title = "Auto Buy All Gear", Default = false })
+AutoBuyAllGearToggle:OnChanged(function(v)
+    Config.SnipeAllGears = v 
+    if v then task.spawn(function() while Config.SnipeAllGears do pcall(function()
+        local myStocks = ReplicatedStorage:FindFirstChild("GearStocks") and ReplicatedStorage.GearStocks:FindFirstChild(Players.LocalPlayer.Name)
+        if myStocks and GearRemote then
+            for _, stockValue in pairs(myStocks:GetChildren()) do if not Config.SnipeAllGears then break end
+                if stockValue:IsA("IntValue") and stockValue.Value > 0 then GearRemote:InvokeServer(stockValue.Name) task.wait(0.5) end
+            end
+        end
+    end) task.wait(1) end end) end 
+end)
+
+MainTab:AddSection("AUTO COMPOST")
+local FloorDrop = MainTab:AddDropdown("FloorDrop", { Title = "Select Composter", Values = {"Normal (Floor 2)", "Premium (Floor 3)"}, Multi = false, Default = 1 })
+FloorDrop:OnChanged(function(Value)
+    if Value == "Normal (Floor 2)" then Config.CompostFloor = 2 else Config.CompostFloor = 3 end
+end)
+
+local CompostSeedDrop = MainTab:AddDropdown("CompostSeedDrop", { Title = "Select Seed for Compost", Values = seedList, Multi = true, Default = {} })
+CompostSeedDrop:OnChanged(function(Value)
+    Config.CompostTargetSeeds = {}
+    for k, v in pairs(Value) do if v then Config.CompostTargetSeeds[k] = true end end
+end)
+
+local CompostRankDrop = MainTab:AddDropdown("CompostRankDrop", { Title = "Select Rarity for Compost", Values = rankList, Multi = true, Default = {} })
+CompostRankDrop:OnChanged(function(Value)
+    Config.CompostTargetRanks = {}
+    for k, v in pairs(Value) do if v then Config.CompostTargetRanks[k] = true end end
+end)
+
+local AutoCompostToggle = MainTab:AddToggle("AutoCompost", { Title = "Auto Compost", Default = false })
+AutoCompostToggle:OnChanged(function(v)
+    Config.AutoCompost = v 
+    if v then task.spawn(function() while Config.AutoCompost do pcall(function()
+        local state = RequestStateRemote:InvokeServer(Config.CompostFloor)
+        if state and state.Tier then PullLeverRemote:InvokeServer(Config.CompostFloor) task.wait(1.5)
+        else
+            local inv = getSeedsInventory()
+            if inv then for seedKey, data in pairs(inv) do if not Config.AutoCompost then break end
+                local seedName, count = data.Name, data.Count or 0
+                local plantData = Registry.Plants[seedName]
+                if count > 0 and plantData and (Config.CompostTargetSeeds[seedName] or Config.CompostTargetRanks[plantData.Rarity]) then
+                    InsertSeedRemote:InvokeServer(Config.CompostFloor, seedKey, 1) task.wait(0.1) break
+                end
+            end end
+        end
+    end) task.wait(0.2) end end) end 
+end)
+
+MainTab:AddSection("OTHERS")
+local AutoSellToggle = MainTab:AddToggle("AutoSellCrates", { Title = "Auto Sell Crates", Default = false })
+AutoSellToggle:OnChanged(function(v)
+    Config.AutoSell = v 
+    if v then task.spawn(function() while Config.AutoSell do pcall(function() SellCratesRemote:FireServer() end) task.wait(0.5) end end) end 
+end)
+
+-- ==================== TAB EVENT (QUEEN BEE & ALIEN) ====================
+
+
+local function equipToken()
+    local char = LocalPlayer.Character
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+    if not char or not backpack or not humanoid then return false end
+
+    for _, item in pairs(char:GetChildren()) do
+        if item:IsA("Tool") and (item.Name == "Honey Token" or item:GetAttribute("HoneyTokenTool") == true) then
+            return true 
+        end
+    end
+
+    for _, item in pairs(backpack:GetChildren()) do
+        if item:IsA("Tool") and (item.Name == "Honey Token" or item:GetAttribute("HoneyTokenTool") == true) then
+            humanoid:EquipTool(item)
+            return true
+        end
+    end
+    return false
+end
+
+EventTab:AddToggle("AutoQueenBee", { Title = "Auto Queen Bee Event", Default = false }):OnChanged(function(v)
+    Config.AutoQueenBee = v
+    if v then 
+        task.spawn(function() 
+            while Config.AutoQueenBee do 
+                local char = LocalPlayer.Character
+                local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+                if not rootPart then task.wait(0.5) continue end
+
+                local foundHoneycomb = false
+
+                -- BƯỚC 1: Lấy Token (Quét trực tiếp lớp ngoài cùng chống lag)
+                for _, obj in ipairs(workspace:GetChildren()) do
+                    if obj.Name == "Honeycomb" then
+                        local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+                        if prompt and prompt.ActionText == "Collect" then
+                            local part = prompt.Parent
+                            if part and part:IsA("BasePart") then
+                                rootPart.CFrame = part.CFrame
+                                task.wait(0.2)
+                                fireproximityprompt(prompt)
+                                foundHoneycomb = true
+                                break 
+                            end
+                        end
+                    end
+                end
+                
+                -- BƯỚC 2: Bỏ Token vào Hũ
+                if not foundHoneycomb then
+                    if equipToken() then
+                        for _, obj in ipairs(workspace:GetChildren()) do
+                            if obj.Name:match("Honey") or obj.Name == "HoneyJarMachine" or obj.Name == "HoneypotSpawn" then
+                                local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+                                if prompt and (prompt.ActionText == "Insert Token" or prompt.ObjectText == "Honey Pot") then
+                                    local part = prompt.Parent
+                                    if part and part:IsA("BasePart") then
+                                        rootPart.CFrame = part.CFrame
+                                        task.wait(0.2)
+                                        fireproximityprompt(prompt)
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                task.wait(0.5) 
+            end 
+        end) 
+    end
+end)
+
+
+
+local AlienRemotes = ReplicatedStorage:WaitForChild("Remotes"):FindFirstChild("AlienInvasion")
+local MothershipDrop = AlienRemotes and AlienRemotes:FindFirstChild("MothershipDrop")
+
+EventTab:AddToggle("AutoAlienEvent", { Title = "Auto Alien Event", Default = false }):OnChanged(function(v)
+    Config.AutoAlien = v
+end)
+
+if MothershipDrop then
+    MothershipDrop.OnClientEvent:Connect(function(_, dropPosition, _, _, dropId)
+        if Config.AutoAlien and typeof(dropPosition) == "Vector3" then
+            local char = LocalPlayer.Character
+            local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+            if rootPart then
+                rootPart.CFrame = CFrame.new(dropPosition)
+                
+                task.delay(0.2, function()
+                    for _, obj in ipairs(workspace:GetChildren()) do
+                        local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+                        if prompt then
+                            local part = prompt.Parent
+                            if part and part:IsA("BasePart") and (part.Position - dropPosition).Magnitude < 15 then
+                                fireproximityprompt(prompt)
+                            end
+                        end
+                    end
+                end)
+            end
+        end
+    end)
+end
+
+-- ==================== TAB SERVER ====================
+ServerTab:AddSection("Server Control")
+ServerTab:AddButton({ Title = "📋 Copy Server ID", Callback = function() setclipboard(game.JobId) Fluent:Notify({Title="Copied", Content="Server ID Copied!"}) end })
+ServerTab:AddButton({ Title = "🔄 Rejoin Server", Callback = function() TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId) end })
+ServerTab:AddButton({ Title = "🔀 Server Hop", Callback = function() TeleportService:Teleport(game.PlaceId) end })
+ServerTab:AddInput("JoinServerInput", { Title = "Join Server by ID", Placeholder = "Enter JobId here...", Callback = function(JobId) if JobId and #JobId > 10 then TeleportService:TeleportToPlaceInstance(game.PlaceId, JobId) end end })
+ServerTab:AddButton({ Title = "👥 Join Low Server", Callback = function()
+    Fluent:Notify({Title = "Searching...", Content = "Finding a quiet server", Duration = 4})
+    local success, result = pcall(function() return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")) end)
+    if success and result and result.data then for _, server in ipairs(result.data) do if server.playing < 8 and server.id ~= game.JobId then TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id) return end end end
+end })
+
+-- ==================== TAB TELEPORT ====================
+local selectedPlayer, autoTeleport, autoTeleportConnection, savedPosition1, savedPosition2 = nil, false, nil, nil, nil
+local function getPlayerList() local list = {} for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then table.insert(list, p.DisplayName .. " (" .. p.Name .. ")") end end return list end
+TeleportTab:AddSection("Player Teleport")
+TeleportTab:AddDropdown("PlayerDropdown", { Title = "Select Player", Values = getPlayerList(), Multi = false, Default = 1 })
+:OnChanged(function(Value) for _, p in pairs(Players:GetPlayers()) do if Value == p.DisplayName .. " (" .. p.Name .. ")" then selectedPlayer = p break end end end)
+
+TeleportTab:AddButton({ Title = "Teleport to Player", Callback = function() if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") if hrp then hrp.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0) end end end })
+TeleportTab:AddToggle("AutoTptoggle", { Title = "Auto Teleport (Follow Player)", Default = false })
+:OnChanged(function(state) autoTeleport = state if autoTeleport then autoTeleportConnection = RunService.Heartbeat:Connect(function() if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") if hrp then hrp.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0) end end end) elseif autoTeleportConnection then autoTeleportConnection:Disconnect() end end)
+
+TeleportTab:AddSection("Saved Locations")
+TeleportTab:AddButton({ Title = "💾 Save Point 1", Callback = function() local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") if hrp then savedPosition1 = hrp.CFrame Fluent:Notify({Title="Saved", Content="Location 1 saved!"}) end end })
+TeleportTab:AddButton({ Title = "🚀 Teleport to Point 1", Callback = function() local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") if hrp and savedPosition1 then hrp.CFrame = savedPosition1 end end })
+TeleportTab:AddButton({ Title = "💾 Save Point 2", Callback = function() local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") if hrp then savedPosition2 = hrp.CFrame Fluent:Notify({Title="Saved", Content="Location 2 saved!"}) end end })
+TeleportTab:AddButton({ Title = "🚀 Teleport to Point 2", Callback = function() local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") if hrp and savedPosition2 then hrp.CFrame = savedPosition2 end end })
+
+-- ==================== TAB PLAYER ====================
+local flying, flySpeed, flyConnection, bodyVelocity, bodyGyro = false, 50, nil, nil, nil
+local noclipConnection, infiniteJumpConnection, espEnabled, boxEnabled, espObjects = nil, nil, false, true, {}
+local customWSEnabled, customWSValue, wsLoop = false, 50, nil
+local function toggleCustomWalkSpeed(state) customWSEnabled = state if state then wsLoop = RunService.Heartbeat:Connect(function(dt) local char = LocalPlayer.Character local hum = char and char:FindFirstChildOfClass("Humanoid") local hrp = char and char:FindFirstChild("HumanoidRootPart") if hum and hrp and hum.Health > 0 and hum.MoveDirection.Magnitude > 0 then hrp.CFrame = hrp.CFrame + (hum.MoveDirection * (customWSValue * dt)) end end) elseif wsLoop then wsLoop:Disconnect() end end
+local function toggleFly(state) flying = state local char = LocalPlayer.Character local hrp = char and char:FindFirstChild("HumanoidRootPart") local hum = char and char:FindFirstChildOfClass("Humanoid") if not hrp or not hum then return end if flying then hum.PlatformStand = true bodyVelocity = Instance.new("BodyVelocity", hrp) bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9) bodyVelocity.Velocity = Vector3.zero bodyGyro = Instance.new("BodyGyro", hrp) bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9) bodyGyro.P = 9e4 bodyGyro.CFrame = hrp.CFrame flyConnection = RunService.RenderStepped:Connect(function() if not flying then return end local cam = workspace.CurrentCamera local dir = Vector3.zero if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0, 1, 0) end if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir -= Vector3.new(0, 1, 0) end if dir.Magnitude > 0 then bodyVelocity.Velocity = dir.Unit * flySpeed else bodyVelocity.Velocity = Vector3.zero end bodyGyro.CFrame = cam.CFrame end) else hum.PlatformStand = false if flyConnection then flyConnection:Disconnect() end if bodyVelocity then bodyVelocity:Destroy() end if bodyGyro then bodyGyro:Destroy() end end end
+local function toggleNoclip(state) if state then noclipConnection = RunService.Stepped:Connect(function() for _, p in pairs(LocalPlayer.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end) elseif noclipConnection then noclipConnection:Disconnect() end end
+local function toggleInfiniteJump(state) if state then infiniteJumpConnection = UserInputService.JumpRequest:Connect(function() if LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end end) elseif infiniteJumpConnection then infiniteJumpConnection:Disconnect() end end
+local function createESP(player) if player == LocalPlayer then return end local box = Drawing.new("Square") box.Visible = false box.Color = Color3.fromRGB(0, 255, 100) box.Thickness = 2 box.Filled = false local nameText = Drawing.new("Text") nameText.Visible = false nameText.Color = Color3.fromRGB(255, 255, 255) nameText.Size = 16 nameText.Center = true nameText.Outline = true local weaponText = Drawing.new("Text") weaponText.Visible = false weaponText.Color = Color3.fromRGB(255, 200, 0) weaponText.Size = 14 weaponText.Center = true weaponText.Outline = true espObjects[player] = {box = box, name = nameText, weapon = weaponText} local conn = RunService.RenderStepped:Connect(function() if not espEnabled or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then if box then box.Visible = false end if nameText then nameText.Visible = false end if weaponText then weaponText.Visible = false end return end local hrp = player.Character.HumanoidRootPart local pos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(hrp.Position) if onScreen then local distance = (workspace.CurrentCamera.CFrame.Position - hrp.Position).Magnitude local size = math.clamp(2200 / distance, 35, 110) if boxEnabled then box.Size = Vector2.new(size, size * 1.7) box.Position = Vector2.new(pos.X - size/2, pos.Y - size/1.2) box.Visible = true else box.Visible = false end nameText.Text = player.DisplayName nameText.Position = Vector2.new(pos.X, pos.Y - size/1.05) nameText.Visible = true local tool = player.Character:FindFirstChildOfClass("Tool") weaponText.Text = tool and "🔫 " .. tool.Name or "" weaponText.Position = Vector2.new(pos.X, pos.Y - size/1.35) weaponText.Visible = tool ~= nil else box.Visible = false nameText.Visible = false weaponText.Visible = false end end) table.insert(espObjects, conn) end
+local function toggleESP(state) espEnabled = state if state then for _, p in pairs(Players:GetPlayers()) do createESP(p) end Players.PlayerAdded:Connect(createESP) else for _, obj in pairs(espObjects) do if obj.box then obj.box:Remove() end if obj.name then obj.name:Remove() end if obj.weapon then obj.weapon:Remove() end end espObjects = {} end end
+PlayerTab:AddSection("Movement Mods")
+PlayerTab:AddToggle("WalkSpeedToggle", { Title = "🏃 Enable Custom WalkSpeed (Bypass)", Default = false }):OnChanged(function(v) toggleCustomWalkSpeed(v) end)
+PlayerTab:AddSlider("WalkSpeedSlider", { Title = "WalkSpeed Value", Min = 10, Max = 300, Default = 50, Rounding = 0, Callback = function(v) customWSValue = v end })
+PlayerTab:AddToggle("FlyToggle", { Title = "✈️ Fly (Smooth/No Jitter)", Default = false }):OnChanged(function(v) toggleFly(v) end)
+PlayerTab:AddInput("FlySpeedInput", { Title = "Fly Speed", Placeholder = "50", Numeric = true, Callback = function(t) if tonumber(t) then flySpeed = tonumber(t) end end })
+PlayerTab:AddToggle("NoclipToggle", { Title = "👻 Noclip", Default = false }):OnChanged(function(v) toggleNoclip(v) end)
+PlayerTab:AddToggle("InfJumpToggle", { Title = "♾️ Infinite Jump", Default = false }):OnChanged(function(v) toggleInfiniteJump(v) end)
+PlayerTab:AddSection("ESP Options")
+PlayerTab:AddToggle("ESPToggle", { Title = "Enable ESP (Box/Name/Weapon)", Default = false }):OnChanged(function(v) toggleESP(v) end)
+PlayerTab:AddToggle("ESPBoxToggle", { Title = "Show ESP Box", Default = true }):OnChanged(function(v) boxEnabled = v end)
+
+-- ==================== TAB MISC ====================
+MiscTab:AddSection("24/7 AFK Optimization")
+MiscTab:AddButton({ Title = "🚀 FPS Boost (Keep Colors)", Callback = function() local Lighting = game:GetService("Lighting") Lighting.GlobalShadows = false Lighting.FogEnd = 9e9 for _, v in pairs(Lighting:GetChildren()) do if v:IsA("PostEffect") then v.Enabled = false end end for _, v in pairs(workspace:GetDescendants()) do if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire") then v.Enabled = false end if v:IsA("BasePart") then v.CastShadow = false end end end })
+MiscTab:AddButton({ Title = "🥔 Potato Mode (Max FPS/Ugly)", Callback = function() local Terrain = workspace:FindFirstChildOfClass("Terrain") if Terrain then Terrain.WaterWaveSize = 0 Terrain.WaterWaveSpeed = 0 Terrain.WaterReflectance = 0 Terrain.WaterTransparency = 0 end for _, v in pairs(workspace:GetDescendants()) do if v:IsA("BasePart") and not v:IsA("MeshPart") then v.Material = Enum.Material.SmoothPlastic v.Reflectance = 0 elseif v:IsA("Decal") or v:IsA("Texture") then v.Transparency = 1 end end end })
+MiscTab:AddToggle("BlackScreenToggle", { Title = "⬛ Black Screen", Default = false }):OnChanged(function(state) local PlayerGui = LocalPlayer:WaitForChild("PlayerGui") if state then pcall(function() RunService:Set3dRenderingEnabled(false) end) local gui = Instance.new("ScreenGui", PlayerGui) gui.Name = "AFK_BLACKSCREEN" gui.DisplayOrder = -999 local frame = Instance.new("Frame", gui) frame.Size = UDim2.new(1, 0, 1, 0) frame.BackgroundColor3 = Color3.new(0, 0, 0) else pcall(function() RunService:Set3dRenderingEnabled(true) end) if PlayerGui:FindFirstChild("AFK_BLACKSCREEN") then PlayerGui.AFK_BLACKSCREEN:Destroy() end end end)
+
+-- ==================== TAB SETTINGS ====================
+InterfaceManager:SetLibrary(Fluent)
+SaveManager:SetLibrary(Fluent)
+FloatingButtonManager:SetLibrary(Fluent)
+InterfaceManager:SetFolder("FluentModded")
+SaveManager:SetFolder("FluentModded/Config")
+InterfaceManager:BuildInterfaceSection(SettingsTab)
+SaveManager:BuildConfigSection(SettingsTab)
+SaveManager:LoadAutoloadConfig()
+
+-- OpenUI Setup (Updated for Mobile Visibility)
+local toggleGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+toggleGui.Name = "OpenUi"
+local mainBtn = Instance.new("TextButton", toggleGui)
+mainBtn.Position = UDim2.new(0.05, 0, 0.05, 0)
+mainBtn.Size = UDim2.new(0, 90, 0, 40)
+mainBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+mainBtn.BackgroundTransparency = 0.2
+mainBtn.Text = "MENU"
+mainBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+mainBtn.Font = Enum.Font.GothamBold
+mainBtn.TextSize = 16
+Instance.new("UICorner", mainBtn).CornerRadius = UDim.new(0, 8)
+mainBtn.MouseButton1Click:Connect(function() Window:Minimize() end)
+
+print("✅ BUSTUPID HUB LOADED SUCCESSFULLY!")
+Window:SelectTab(1)
