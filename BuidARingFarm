@@ -539,7 +539,7 @@ EventTab:AddSection("Alien Invasion")
 local AlienRemotes = ReplicatedStorage:WaitForChild("Remotes"):FindFirstChild("AlienInvasion")
 local MothershipDrop = AlienRemotes and AlienRemotes:FindFirstChild("MothershipDrop")
 
-EventTab:AddToggle("AutoAlienEvent", { Title = "Auto Alien Event (Hứng Đồ)", Default = false }):OnChanged(function(v)
+EventTab:AddToggle("AutoAlienEvent", { Title = "Auto Alien Event", Default = false }):OnChanged(function(v)
     Config.AutoAlien = v
 end)
 
