@@ -462,7 +462,7 @@ AutoSellToggle:OnChanged(function(v)
 end)
 
 -- ==================== TAB EVENT (QUEEN BEE, ALIEN, PLANT RUSH) ====================
-EventTab:AddSection("Queen Bee")
+
 
 local function equipTokenBee()
     local char = LocalPlayer.Character
@@ -535,7 +535,7 @@ EventTab:AddToggle("AutoQueenBee", { Title = "Auto Queen Bee Event", Default = f
     end
 end)
 
-EventTab:AddSection("Alien Invasion")
+
 local AlienRemotes = ReplicatedStorage:WaitForChild("Remotes"):FindFirstChild("AlienInvasion")
 local MothershipDrop = AlienRemotes and AlienRemotes:FindFirstChild("MothershipDrop")
 
@@ -565,7 +565,7 @@ if MothershipDrop then
     end)
 end
 
-EventTab:AddSection("Plant Rush Event")
+
 local function isShooterTool(tool, pConfig)
     if not tool or not tool:IsA("Tool") then return false end
     return tool:GetAttribute(pConfig.Shooter.Attribute) == true or tool.Name == pConfig.Shooter.ToolName
