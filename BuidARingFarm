@@ -1,6 +1,6 @@
 -- ==================================================
 -- FULL SCRIPT: BUSTUPID HUB - FLUENT MODDED VERSION
--- Integrated: AutoFarm, Egg, Seed, Gear, Compost, Queen Bee, Alien, Plant Rush (Max 10 Targets)
+-- Integrated: AutoFarm, Egg, Seed, Gear, Compost, Queen Bee (Smart Scan), Alien, Plant Rush
 -- ==================================================
 
 local Players = game:GetService("Players")
@@ -461,7 +461,8 @@ AutoSellToggle:OnChanged(function(v)
     if v then task.spawn(function() while Config.AutoSell do pcall(function() SellCratesRemote:FireServer() end) task.wait(0.5) end end) end 
 end)
 
--- ==================== TAB EVENT ====================
+-- ==================== TAB EVENT (QUEEN BEE, ALIEN, PLANT RUSH) ====================
+EventTab:AddSection("Queen Bee")
 
 local function equipTokenBee()
     local char = LocalPlayer.Character
@@ -488,57 +489,57 @@ EventTab:AddToggle("AutoQueenBee", { Title = "Auto Queen Bee Event", Default = f
     Config.AutoQueenBee = v
     if v then 
         task.spawn(function() 
+            local cachedPotPrompt = nil
+
             while Config.AutoQueenBee do 
                 local char = LocalPlayer.Character
                 local rootPart = char and char:FindFirstChild("HumanoidRootPart")
                 if not rootPart then task.wait(0.5) continue end
 
-                local foundHoneycomb = false
-                for _, obj in ipairs(workspace:GetChildren()) do
-                    if obj.Name == "Honeycomb" then
-                        local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-                        if prompt and prompt.ActionText == "Collect" then
-                            local part = prompt.Parent
-                            if part and part:IsA("BasePart") then
-                                rootPart.CFrame = part.CFrame
-                                task.wait(0.2)
-                                fireproximityprompt(prompt)
-                                foundHoneycomb = true
-                                break 
+                local hasToken = equipTokenBee()
+                local targetPrompt = nil
+
+                if hasToken then
+                    -- Ưu tiên xài Cache Hũ Mật cho đỡ lag
+                    if cachedPotPrompt and cachedPotPrompt.Parent then
+                        targetPrompt = cachedPotPrompt
+                    else
+                        for _, prompt in ipairs(workspace:GetDescendants()) do
+                            if prompt:IsA("ProximityPrompt") and (prompt.ActionText == "Insert Token" or prompt.ObjectText == "Honey Pot") then
+                                cachedPotPrompt = prompt
+                                targetPrompt = prompt
+                                break
                             end
                         end
                     end
+                else
+                    -- Chưa có token thì đi tìm tổ ong (Gặp là break liền cho nhẹ máy)
+                    for _, prompt in ipairs(workspace:GetDescendants()) do
+                        if prompt:IsA("ProximityPrompt") and prompt.ActionText == "Collect" and prompt.ObjectText == "Honeycomb" then
+                            targetPrompt = prompt
+                            break
+                        end
+                    end
+                end
+
+                -- Thực hiện Tele và Bấm E
+                if targetPrompt and targetPrompt.Parent and targetPrompt.Parent:IsA("BasePart") then
+                    rootPart.CFrame = targetPrompt.Parent.CFrame
+                    task.wait(0.25)
+                    fireproximityprompt(targetPrompt)
                 end
                 
-                if not foundHoneycomb then
-                    if equipTokenBee() then
-                        for _, obj in ipairs(workspace:GetChildren()) do
-                            if obj.Name:match("Honey") or obj.Name == "HoneyJarMachine" or obj.Name == "HoneypotSpawn" then
-                                local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-                                if prompt and (prompt.ActionText == "Insert Token" or prompt.ObjectText == "Honey Pot") then
-                                    local part = prompt.Parent
-                                    if part and part:IsA("BasePart") then
-                                        rootPart.CFrame = part.CFrame
-                                        task.wait(0.2)
-                                        fireproximityprompt(prompt)
-                                        break
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
                 task.wait(0.5) 
             end 
         end) 
     end
 end)
 
-
+EventTab:AddSection("Alien Invasion")
 local AlienRemotes = ReplicatedStorage:WaitForChild("Remotes"):FindFirstChild("AlienInvasion")
 local MothershipDrop = AlienRemotes and AlienRemotes:FindFirstChild("MothershipDrop")
 
-EventTab:AddToggle("AutoAlienEvent", { Title = "Auto Alien Event", Default = false }):OnChanged(function(v)
+EventTab:AddToggle("AutoAlienEvent", { Title = "Auto Alien Event (Hứng Đồ)", Default = false }):OnChanged(function(v)
     Config.AutoAlien = v
 end)
 
@@ -550,9 +551,8 @@ if MothershipDrop then
             if rootPart then
                 rootPart.CFrame = CFrame.new(dropPosition)
                 task.delay(0.2, function()
-                    for _, obj in ipairs(workspace:GetChildren()) do
-                        local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-                        if prompt then
+                    for _, prompt in ipairs(workspace:GetDescendants()) do
+                        if prompt:IsA("ProximityPrompt") then
                             local part = prompt.Parent
                             if part and part:IsA("BasePart") and (part.Position - dropPosition).Magnitude < 15 then
                                 fireproximityprompt(prompt)
@@ -565,7 +565,7 @@ if MothershipDrop then
     end)
 end
 
-
+EventTab:AddSection("Plant Rush Event")
 local function isShooterTool(tool, pConfig)
     if not tool or not tool:IsA("Tool") then return false end
     return tool:GetAttribute(pConfig.Shooter.Attribute) == true or tool.Name == pConfig.Shooter.ToolName
@@ -612,7 +612,6 @@ EventTab:AddToggle("AutoPlantRush", { Title = "Auto Plant Rush (Kill Aura)", Def
                     local tool = char:FindFirstChildOfClass("Tool")
                     local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
 
-                    -- Auto Equip súng
                     if not isShooterTool(tool, PlantRushConfig) and backpack then
                         for _, item in ipairs(backpack:GetChildren()) do
                             if isShooterTool(item, PlantRushConfig) then
@@ -622,7 +621,6 @@ EventTab:AddToggle("AutoPlantRush", { Title = "Auto Plant Rush (Kill Aura)", Def
                         end
                     end
 
-                    -- Bắn mục tiêu (Kill Aura tự bắn tối đa 10 con)
                     if tool and isShooterTool(tool, PlantRushConfig) then
                         local cam = workspace.CurrentCamera
                         local origin = cam and cam.CFrame.Position or (char.PrimaryPart and char.PrimaryPart.Position) or Vector3.zero
