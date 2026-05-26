@@ -12,10 +12,26 @@ local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
--- ==================== ANTI AFK ====================
+-- ==================== ANTI AFK (VƯỢT AFK ROBLOX & GAME) ====================
 LocalPlayer.Idled:Connect(function()
     VirtualUser:CaptureController()
     VirtualUser:ClickButton2(Vector2.new())
+end)
+
+-- Chặn triệt để lệnh đá sang Server AFK của game
+pcall(function()
+    local Remotes = ReplicatedStorage:WaitForChild("Remotes", 5)
+    local AFKRemote = Remotes and Remotes:WaitForChild("RequestAFKTeleport", 5)
+    
+    if AFKRemote then
+        local oldNamecall
+        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            if self == AFKRemote and getnamecallmethod() == "FireServer" then
+                return -- Chặn lệnh gửi đi, nhân vật vẫn đứng im farm tiếp
+            end
+            return oldNamecall(self, ...)
+        end)
+    end
 end)
 
 -- ==================== PRIVACY MODE (CENSOR NAME) ====================
@@ -198,8 +214,21 @@ local Config = {
     AutoAlien = false,
     AutoPlantRush = false
 }
+local AllowServerTeleport = true
 
 local BuySeedResponses = {}
+local RollSeedResponse = nil
+if RollSeedsRemote and RollSeedsRemote:IsA("RemoteEvent") then
+    RollSeedsRemote.OnClientEvent:Connect(function(...)
+        local args = {...}
+        for _, arg in ipairs(args) do
+            if type(arg) == "table" then
+                RollSeedResponse = arg
+                break
+            end
+        end
+    end)
+end
 if BuySeedRemote:IsA("RemoteEvent") then
     BuySeedRemote.OnClientEvent:Connect(function(index, success)
         if type(index) == "number" then BuySeedResponses[index] = success end
@@ -348,17 +377,11 @@ local AutoRollBuyToggle = MainTab:AddToggle("AutoRollBuy", { Title = "Auto Roll 
 AutoRollBuyToggle:OnChanged(function(v)
     Config.AutoSeeds = v 
     if v then task.spawn(function() while Config.AutoSeeds do pcall(function()
+        RollSeedResponse = nil
         RollSeedsRemote:FireServer()
-        local res = nil
-        local conn
-        conn = RollSeedsRemote.OnClientEvent:Connect(function(...)
-            local args = {...}
-            for _, arg in ipairs(args) do if type(arg) == "table" then res = arg break end end
-            if conn then conn:Disconnect() end
-        end)
         local t = os.clock()
-        while not res and (os.clock() - t) < 3 do task.wait(0.1) end
-        if conn and conn.Connected then conn:Disconnect() end
+        while not RollSeedResponse and (os.clock() - t) < 3 do task.wait(0.1) end
+        local res = RollSeedResponse
         if res then
             local bought = false
             for i, name in pairs(res) do
@@ -440,18 +463,27 @@ AutoCompostToggle:OnChanged(function(v)
     Config.AutoCompost = v 
     if v then task.spawn(function() while Config.AutoCompost do pcall(function()
         local state = RequestStateRemote:InvokeServer(Config.CompostFloor)
-        if state and state.Tier then PullLeverRemote:InvokeServer(Config.CompostFloor) task.wait(1.5)
+        if state and state.Tier then
+            PullLeverRemote:InvokeServer(Config.CompostFloor)
+            task.wait(1.5)
         else
+            local usedSeed = false
             local inv = getSeedsInventory()
-            if inv then for seedKey, data in pairs(inv) do if not Config.AutoCompost then break end
-                local seedName, count = data.Name, data.Count or 0
-                local plantData = Registry.Plants[seedName]
-                if count > 0 and plantData and (Config.CompostTargetSeeds[seedName] or Config.CompostTargetRanks[plantData.Rarity]) then
-                    InsertSeedRemote:InvokeServer(Config.CompostFloor, seedKey, 1) task.wait(0.1) break
+            if inv then
+                for seedKey, data in pairs(inv) do
+                    if not Config.AutoCompost then break end
+                    local seedName, count = data.Name, data.Count or 0
+                    local plantData = Registry.Plants[seedName]
+                    if count > 0 and plantData and (Config.CompostTargetSeeds[seedName] or Config.CompostTargetRanks[plantData.Rarity]) then
+                        InsertSeedRemote:InvokeServer(Config.CompostFloor, seedKey, 1)
+                        usedSeed = true
+                        break
+                    end
                 end
-            end end
+            end
+            task.wait(usedSeed and 1 or 0.8)
         end
-    end) task.wait(0.2) end end) end 
+    end) task.wait(0.8) end end) end 
 end)
 
 MainTab:AddSection("OTHERS")
@@ -485,6 +517,49 @@ local function equipTokenBee()
     return false
 end
 
+local BeePrompts = {InsertToken = {}, CollectHoney = {}}
+local function addBeePrompt(prompt)
+    if not prompt:IsA("ProximityPrompt") then return end
+    if prompt.ActionText == "Insert Token" or prompt.ObjectText == "Honey Pot" then
+        table.insert(BeePrompts.InsertToken, prompt)
+    elseif prompt.ActionText == "Collect" and prompt.ObjectText == "Honeycomb" then
+        table.insert(BeePrompts.CollectHoney, prompt)
+    end
+end
+local function removeBeePrompt(prompt)
+    local function removeFrom(list)
+        for i, item in ipairs(list) do
+            if item == prompt then
+                table.remove(list, i)
+                return
+            end
+        end
+    end
+    removeFrom(BeePrompts.InsertToken)
+    removeFrom(BeePrompts.CollectHoney)
+end
+local function getClosestBeePrompt(list, origin)
+    local closest, bestDist = nil, math.huge
+    for _, prompt in ipairs(list) do
+        if prompt and prompt.Parent and prompt.Parent:IsA("BasePart") then
+            local dist = (prompt.Parent.Position - origin).Magnitude
+            if dist < bestDist then
+                bestDist = dist
+                closest = prompt
+            end
+        end
+    end
+    return closest
+end
+
+task.spawn(function()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        addBeePrompt(obj)
+    end
+    workspace.DescendantAdded:Connect(addBeePrompt)
+    workspace.DescendantRemoving:Connect(removeBeePrompt)
+end)
+
 EventTab:AddToggle("AutoQueenBee", { Title = "Auto Queen Bee Event", Default = false }):OnChanged(function(v)
     Config.AutoQueenBee = v
     if v then 
@@ -500,26 +575,14 @@ EventTab:AddToggle("AutoQueenBee", { Title = "Auto Queen Bee Event", Default = f
                 local targetPrompt = nil
 
                 if hasToken then
-                    -- Ưu tiên xài Cache Hũ Mật cho đỡ lag
                     if cachedPotPrompt and cachedPotPrompt.Parent then
                         targetPrompt = cachedPotPrompt
                     else
-                        for _, prompt in ipairs(workspace:GetDescendants()) do
-                            if prompt:IsA("ProximityPrompt") and (prompt.ActionText == "Insert Token" or prompt.ObjectText == "Honey Pot") then
-                                cachedPotPrompt = prompt
-                                targetPrompt = prompt
-                                break
-                            end
-                        end
+                        targetPrompt = getClosestBeePrompt(BeePrompts.InsertToken, rootPart.Position)
+                        cachedPotPrompt = targetPrompt
                     end
                 else
-                    -- Chưa có token thì đi tìm tổ ong (Gặp là break liền cho nhẹ máy)
-                    for _, prompt in ipairs(workspace:GetDescendants()) do
-                        if prompt:IsA("ProximityPrompt") and prompt.ActionText == "Collect" and prompt.ObjectText == "Honeycomb" then
-                            targetPrompt = prompt
-                            break
-                        end
-                    end
+                    targetPrompt = getClosestBeePrompt(BeePrompts.CollectHoney, rootPart.Position)
                 end
 
                 -- Thực hiện Tele và Bấm E
@@ -607,6 +670,7 @@ EventTab:AddToggle("AutoPlantRush", { Title = "Auto Plant Rush (Kill Aura)", Def
             end
 
             while Config.AutoPlantRush do
+                local nextDelay = 0.5
                 local char = LocalPlayer.Character
                 if char then
                     local tool = char:FindFirstChildOfClass("Tool")
@@ -636,15 +700,22 @@ EventTab:AddToggle("AutoPlantRush", { Title = "Auto Plant Rush (Kill Aura)", Def
 
                         if #positions == 0 then
                             table.insert(positions, origin + direction.Unit * (PlantRushConfig.Shooter.Range or 100))
+                            nextDelay = 0.5
+                        else
+                            nextDelay = 1 / (PlantRushConfig.Shooter.ShotsPerSecond or 10)
                         end
 
                         for _, targetPos in ipairs(positions) do
                             local shotDirection = (targetPos - origin).Magnitude > 0 and (targetPos - origin).Unit or direction.Unit
                             pcall(function() shootRemote:FireServer(origin, shotDirection, targetPos) end)
                         end
+                    else
+                        nextDelay = 0.5
                     end
+                else
+                    nextDelay = 0.5
                 end
-                task.wait(1 / (PlantRushConfig.Shooter.ShotsPerSecond or 10))
+                task.wait(nextDelay)
             end
         end)
     end
@@ -653,13 +724,30 @@ end)
 -- ==================== TAB SERVER ====================
 ServerTab:AddSection("Server Control")
 ServerTab:AddButton({ Title = "📋 Copy Server ID", Callback = function() setclipboard(game.JobId) Fluent:Notify({Title="Copied", Content="Server ID Copied!"}) end })
-ServerTab:AddButton({ Title = "🔄 Rejoin Server", Callback = function() TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId) end })
-ServerTab:AddButton({ Title = "🔀 Server Hop", Callback = function() TeleportService:Teleport(game.PlaceId) end })
-ServerTab:AddInput("JoinServerInput", { Title = "Join Server by ID", Placeholder = "Enter JobId here...", Callback = function(JobId) if JobId and #JobId > 10 then TeleportService:TeleportToPlaceInstance(game.PlaceId, JobId) end end })
+ServerTab:AddButton({ Title = "🔄 Rejoin Server", Callback = function()
+    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId)
+end })
+ServerTab:AddButton({ Title = "🔀 Server Hop", Callback = function()
+    TeleportService:Teleport(game.PlaceId)
+end })
+ServerTab:AddInput("JoinServerInput", { Title = "Join Server by ID", Placeholder = "Enter JobId here...", Callback = function(JobId)
+    if JobId and #JobId > 0 then
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, JobId)
+    end
+end })
 ServerTab:AddButton({ Title = "👥 Join Low Server", Callback = function()
     Fluent:Notify({Title = "Searching...", Content = "Finding a quiet server", Duration = 4})
-    local success, result = pcall(function() return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")) end)
-    if success and result and result.data then for _, server in ipairs(result.data) do if server.playing < 8 and server.id ~= game.JobId then TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id) return end end end
+    local success, result = pcall(function()
+        return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+    end)
+    if success and result and result.data then
+        for _, server in ipairs(result.data) do
+            if server.playing < 8 and server.id ~= game.JobId then
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id)
+                return
+            end
+        end
+    end
 end })
 
 -- ==================== TAB TELEPORT ====================
@@ -683,12 +771,195 @@ TeleportTab:AddButton({ Title = "🚀 Teleport to Point 2", Callback = function(
 local flying, flySpeed, flyConnection, bodyVelocity, bodyGyro = false, 50, nil, nil, nil
 local noclipConnection, infiniteJumpConnection, espEnabled, boxEnabled, espObjects = nil, nil, false, true, {}
 local customWSEnabled, customWSValue, wsLoop = false, 50, nil
+local fpsLockEnabled, fpsLockValue, fpsLockConnection = false, 60, nil
+local lastFrameTime = tick()
 local function toggleCustomWalkSpeed(state) customWSEnabled = state if state then wsLoop = RunService.Heartbeat:Connect(function(dt) local char = LocalPlayer.Character local hum = char and char:FindFirstChildOfClass("Humanoid") local hrp = char and char:FindFirstChild("HumanoidRootPart") if hum and hrp and hum.Health > 0 and hum.MoveDirection.Magnitude > 0 then hrp.CFrame = hrp.CFrame + (hum.MoveDirection * (customWSValue * dt)) end end) elseif wsLoop then wsLoop:Disconnect() end end
+local function toggleFPSLock(state) 
+    fpsLockEnabled = state 
+    if state then 
+        lastFrameTime = tick()
+        fpsLockConnection = RunService.RenderStepped:Connect(function() 
+            if fpsLockEnabled then
+                local currentTime = tick()
+                local targetFrameTime = 1 / fpsLockValue
+                local deltaTime = currentTime - lastFrameTime
+                if deltaTime < targetFrameTime then
+                    task.wait(targetFrameTime - deltaTime)
+                end
+                lastFrameTime = tick()
+            end
+        end) 
+    else 
+        if fpsLockConnection then 
+            fpsLockConnection:Disconnect() 
+            fpsLockConnection = nil 
+        end 
+    end 
+end
 local function toggleFly(state) flying = state local char = LocalPlayer.Character local hrp = char and char:FindFirstChild("HumanoidRootPart") local hum = char and char:FindFirstChildOfClass("Humanoid") if not hrp or not hum then return end if flying then hum.PlatformStand = true bodyVelocity = Instance.new("BodyVelocity", hrp) bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9) bodyVelocity.Velocity = Vector3.zero bodyGyro = Instance.new("BodyGyro", hrp) bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9) bodyGyro.P = 9e4 bodyGyro.CFrame = hrp.CFrame flyConnection = RunService.RenderStepped:Connect(function() if not flying then return end local cam = workspace.CurrentCamera local dir = Vector3.zero if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0, 1, 0) end if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir -= Vector3.new(0, 1, 0) end if dir.Magnitude > 0 then bodyVelocity.Velocity = dir.Unit * flySpeed else bodyVelocity.Velocity = Vector3.zero end bodyGyro.CFrame = cam.CFrame end) else hum.PlatformStand = false if flyConnection then flyConnection:Disconnect() end if bodyVelocity then bodyVelocity:Destroy() end if bodyGyro then bodyGyro:Destroy() end end end
-local function toggleNoclip(state) if state then noclipConnection = RunService.Stepped:Connect(function() for _, p in pairs(LocalPlayer.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end) elseif noclipConnection then noclipConnection:Disconnect() end end
-local function toggleInfiniteJump(state) if state then infiniteJumpConnection = UserInputService.JumpRequest:Connect(function() if LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end end) elseif infiniteJumpConnection then infiniteJumpConnection:Disconnect() end end
-local function createESP(player) if player == LocalPlayer then return end local box = Drawing.new("Square") box.Visible = false box.Color = Color3.fromRGB(0, 255, 100) box.Thickness = 2 box.Filled = false local nameText = Drawing.new("Text") nameText.Visible = false nameText.Color = Color3.fromRGB(255, 255, 255) nameText.Size = 16 nameText.Center = true nameText.Outline = true local weaponText = Drawing.new("Text") weaponText.Visible = false weaponText.Color = Color3.fromRGB(255, 200, 0) weaponText.Size = 14 weaponText.Center = true weaponText.Outline = true espObjects[player] = {box = box, name = nameText, weapon = weaponText} local conn = RunService.RenderStepped:Connect(function() if not espEnabled or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then if box then box.Visible = false end if nameText then nameText.Visible = false end if weaponText then weaponText.Visible = false end return end local hrp = player.Character.HumanoidRootPart local pos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(hrp.Position) if onScreen then local distance = (workspace.CurrentCamera.CFrame.Position - hrp.Position).Magnitude local size = math.clamp(2200 / distance, 35, 110) if boxEnabled then box.Size = Vector2.new(size, size * 1.7) box.Position = Vector2.new(pos.X - size/2, pos.Y - size/1.2) box.Visible = true else box.Visible = false end nameText.Text = player.DisplayName nameText.Position = Vector2.new(pos.X, pos.Y - size/1.05) nameText.Visible = true local tool = player.Character:FindFirstChildOfClass("Tool") weaponText.Text = tool and "🔫 " .. tool.Name or "" weaponText.Position = Vector2.new(pos.X, pos.Y - size/1.35) weaponText.Visible = tool ~= nil else box.Visible = false nameText.Visible = false weaponText.Visible = false end end) table.insert(espObjects, conn) end
-local function toggleESP(state) espEnabled = state if state then for _, p in pairs(Players:GetPlayers()) do createESP(p) end Players.PlayerAdded:Connect(createESP) else for _, obj in pairs(espObjects) do if obj.box then obj.box:Remove() end if obj.name then obj.name:Remove() end if obj.weapon then obj.weapon:Remove() end end espObjects = {} end end
+local noclipCharacterConnection = nil
+local function applyNoclipToCharacter(character)
+    if not character then return nil end
+    for _, descendant in ipairs(character:GetDescendants()) do
+        if descendant:IsA("BasePart") then
+            descendant.CanCollide = false
+        end
+    end
+    return character.DescendantAdded:Connect(function(descendant)
+        if descendant:IsA("BasePart") then
+            descendant.CanCollide = false
+        end
+    end)
+end
+local function toggleNoclip(state)
+    if state then
+        local character = LocalPlayer.Character
+        if character then
+            if noclipCharacterConnection then
+                noclipCharacterConnection:Disconnect()
+                noclipCharacterConnection = nil
+            end
+            noclipCharacterConnection = applyNoclipToCharacter(character)
+        end
+        if not noclipConnection then
+            noclipConnection = LocalPlayer.CharacterAdded:Connect(function(char)
+                if noclipCharacterConnection then
+                    noclipCharacterConnection:Disconnect()
+                    noclipCharacterConnection = nil
+                end
+                noclipCharacterConnection = applyNoclipToCharacter(char)
+            end)
+        end
+    elseif noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+        if noclipCharacterConnection then
+            noclipCharacterConnection:Disconnect()
+            noclipCharacterConnection = nil
+        end
+    end
+end
+local function toggleInfiniteJump(state)
+    if state then
+        infiniteJumpConnection = UserInputService.JumpRequest:Connect(function()
+            local character = LocalPlayer.Character
+            if character and character:FindFirstChild("Humanoid") then
+                character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
+    elseif infiniteJumpConnection then
+        infiniteJumpConnection:Disconnect()
+    end
+end
+
+local espRenderConnection, espPlayerAddedConnection, espPlayerRemovingConnection = nil, nil, nil
+local function createESP(player)
+    if player == LocalPlayer or espObjects[player] then return end
+    local box = Drawing.new("Square")
+    box.Visible = false
+    box.Color = Color3.fromRGB(0, 255, 100)
+    box.Thickness = 2
+    box.Filled = false
+
+    local nameText = Drawing.new("Text")
+    nameText.Visible = false
+    nameText.Color = Color3.fromRGB(255, 255, 255)
+    nameText.Size = 16
+    nameText.Center = true
+    nameText.Outline = true
+
+    local weaponText = Drawing.new("Text")
+    weaponText.Visible = false
+    weaponText.Color = Color3.fromRGB(255, 200, 0)
+    weaponText.Size = 14
+    weaponText.Center = true
+    weaponText.Outline = true
+
+    espObjects[player] = {box = box, name = nameText, weapon = weaponText}
+end
+local function removeESP(player)
+    local data = espObjects[player]
+    if not data then return end
+    if data.box then data.box:Remove() end
+    if data.name then data.name:Remove() end
+    if data.weapon then data.weapon:Remove() end
+    espObjects[player] = nil
+end
+local function updateESP()
+    if not espEnabled then return end
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+
+    local camPos = camera.CFrame.Position
+    for player, data in pairs(espObjects) do
+        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+            data.box.Visible = false
+            data.name.Visible = false
+            data.weapon.Visible = false
+        else
+            local hrp = player.Character.HumanoidRootPart
+            local pos, onScreen = camera:WorldToViewportPoint(hrp.Position)
+            if onScreen then
+                local distance = (camPos - hrp.Position).Magnitude
+                local size = math.clamp(2200 / distance, 35, 110)
+                if boxEnabled then
+                    data.box.Size = Vector2.new(size, size * 1.7)
+                    data.box.Position = Vector2.new(pos.X - size / 2, pos.Y - size / 1.2)
+                    data.box.Visible = true
+                else
+                    data.box.Visible = false
+                end
+                data.name.Text = player.DisplayName
+                data.name.Position = Vector2.new(pos.X, pos.Y - size / 1.05)
+                data.name.Visible = true
+                local tool = player.Character:FindFirstChildOfClass("Tool")
+                data.weapon.Text = tool and "🔫 " .. tool.Name or ""
+                data.weapon.Position = Vector2.new(pos.X, pos.Y - size / 1.35)
+                data.weapon.Visible = tool ~= nil
+            else
+                data.box.Visible = false
+                data.name.Visible = false
+                data.weapon.Visible = false
+            end
+        end
+    end
+end
+local function toggleESP(state)
+    espEnabled = state
+    if state then
+        for _, player in pairs(Players:GetPlayers()) do
+            createESP(player)
+        end
+        if not espPlayerAddedConnection then
+            espPlayerAddedConnection = Players.PlayerAdded:Connect(createESP)
+        end
+        if not espPlayerRemovingConnection then
+            espPlayerRemovingConnection = Players.PlayerRemoving:Connect(removeESP)
+        end
+        if not espRenderConnection then
+            espRenderConnection = RunService.RenderStepped:Connect(updateESP)
+        end
+    else
+        if espRenderConnection then
+            espRenderConnection:Disconnect()
+            espRenderConnection = nil
+        end
+        if espPlayerAddedConnection then
+            espPlayerAddedConnection:Disconnect()
+            espPlayerAddedConnection = nil
+        end
+        if espPlayerRemovingConnection then
+            espPlayerRemovingConnection:Disconnect()
+            espPlayerRemovingConnection = nil
+        end
+        for player, data in pairs(espObjects) do
+            if data.box then data.box:Remove() end
+            if data.name then data.name:Remove() end
+            if data.weapon then data.weapon:Remove() end
+        end
+        espObjects = {}
+    end
+end
 PlayerTab:AddSection("Movement Mods")
 PlayerTab:AddToggle("WalkSpeedToggle", { Title = "🏃 Enable Custom WalkSpeed (Bypass)", Default = false }):OnChanged(function(v) toggleCustomWalkSpeed(v) end)
 PlayerTab:AddSlider("WalkSpeedSlider", { Title = "WalkSpeed Value", Min = 10, Max = 300, Default = 50, Rounding = 0, Callback = function(v) customWSValue = v end })
@@ -705,6 +976,9 @@ MiscTab:AddSection("24/7 AFK Optimization")
 MiscTab:AddButton({ Title = "🚀 FPS Boost (Keep Colors)", Callback = function() local Lighting = game:GetService("Lighting") Lighting.GlobalShadows = false Lighting.FogEnd = 9e9 for _, v in pairs(Lighting:GetChildren()) do if v:IsA("PostEffect") then v.Enabled = false end end for _, v in pairs(workspace:GetDescendants()) do if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire") then v.Enabled = false end if v:IsA("BasePart") then v.CastShadow = false end end end })
 MiscTab:AddButton({ Title = "🥔 Potato Mode (Max FPS/Ugly)", Callback = function() local Terrain = workspace:FindFirstChildOfClass("Terrain") if Terrain then Terrain.WaterWaveSize = 0 Terrain.WaterWaveSpeed = 0 Terrain.WaterReflectance = 0 Terrain.WaterTransparency = 0 end for _, v in pairs(workspace:GetDescendants()) do if v:IsA("BasePart") and not v:IsA("MeshPart") then v.Material = Enum.Material.SmoothPlastic v.Reflectance = 0 elseif v:IsA("Decal") or v:IsA("Texture") then v.Transparency = 1 end end end })
 MiscTab:AddToggle("BlackScreenToggle", { Title = "⬛ Black Screen", Default = false }):OnChanged(function(state) local PlayerGui = LocalPlayer:WaitForChild("PlayerGui") if state then pcall(function() RunService:Set3dRenderingEnabled(false) end) local gui = Instance.new("ScreenGui", PlayerGui) gui.Name = "AFK_BLACKSCREEN" gui.DisplayOrder = -999 local frame = Instance.new("Frame", gui) frame.Size = UDim2.new(1, 0, 1, 0) frame.BackgroundColor3 = Color3.new(0, 0, 0) else pcall(function() RunService:Set3dRenderingEnabled(true) end) if PlayerGui:FindFirstChild("AFK_BLACKSCREEN") then PlayerGui.AFK_BLACKSCREEN:Destroy() end end end)
+MiscTab:AddSection("FPS Limiter")
+MiscTab:AddDropdown("FPSLockDrop", { Title = "Select FPS Cap", Values = {"5", "10", "15", "30", "60", "120", "240", "999 (Unlimited)"}, Multi = false, Default = 5 }):OnChanged(function(Value) local fpsMap = {["5"] = 5, ["10"] = 10, ["15"] = 15, ["30"] = 30, ["60"] = 60, ["120"] = 120, ["240"] = 240, ["999 (Unlimited)"] = 999} fpsLockValue = fpsMap[Value] or 60 if fpsLockEnabled then toggleFPSLock(false) toggleFPSLock(true) end end)
+MiscTab:AddToggle("FPSLockToggle", { Title = "🎯 Enable FPS Lock", Default = false }):OnChanged(function(v) toggleFPSLock(v) end)
 
 -- ==================== TAB SETTINGS ====================
 InterfaceManager:SetLibrary(Fluent)
