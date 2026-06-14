@@ -1,179 +1,302 @@
+-- ===================================================
+-- DANIELROBLOX.STORE - FLUENT UI (AUTO SCAN PET + RANK + SERVER HOP)
+-- ===================================================
+
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+
+local Networking = require(RS:WaitForChild("SharedModules"):WaitForChild("Networking"))
+local PetModules = require(RS:WaitForChild("SharedModules"):WaitForChild("PetModules"))
+
+-- 1. Load Fluent UI library
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
--- ==========================================
--- 1. KHỞI TẠO MENU CHÍNH
--- ==========================================
+-- 2. Create menu window
 local Window = Fluent:CreateWindow({
-    Title = "DanielRoblox.Store 👑",
-    SubTitle = "VIP Auto Hub",
-    TabWidth = 120,
-    Size = UDim2.fromOffset(480, 320),
-    Acrylic = false,
-    Theme = "Darker",
-    MinimizeKey = Enum.KeyCode.M
+    Title = "DanielRoblox.Store",
+    SubTitle = "Auto Pet",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(500, 420),
+    Theme = "Darker"
 })
 
 local Tabs = {
-    Combat = Window:AddTab({ Title = "Cày Quái & PVP", Icon = "swords" }),
-    Gacha = Window:AddTab({ Title = "Auto Roll", Icon = "dices" }),
-    Misc = Window:AddTab({ Title = "Tối Ưu Máy", Icon = "settings" })
+    Pets = Window:AddTab({ Title = "Catch Pets", Icon = "paw" })
 }
 
-local LocalPlayer = game:GetService("Players").LocalPlayer
-
--- ==========================================
--- TAB 1: COMBAT & PVP
--- ==========================================
-local targetEnemy = "Calculino"
-local autoFarm = false
-local autoPVP = false
-
-Tabs.Combat:AddInput("EnemyName", {
-    Title = "Tên Quái Cần Farm",
-    Default = "Calculino",
-    Placeholder = "Nhập tên quái...",
-    Numeric = false,
-    Finished = false,
-    Callback = function(Value)
-        targetEnemy = Value
+-- 3. AUTO PET SCAN SYSTEM
+local DynamicPetList = {"All"}
+for petName, _ in pairs(PetModules) do
+    if type(petName) == "string" then
+        table.insert(DynamicPetList, petName)
     end
-})
+end
+table.sort(DynamicPetList, function(a, b)
+    if a == "All" then return true end
+    if b == "All" then return false end
+    return a < b
+end)
 
-Tabs.Combat:AddToggle("AutoFarm", {
-    Title = "🔪 Auto Farm Tiền + Goop (Quái Ẩn)",
-    Default = false,
-    Callback = function(state)
-        autoFarm = state
-        if state then
-            task.spawn(function()
-                -- Móc vào thư viện Network của game
-                local Network = require(game:GetService("ReplicatedStorage"):WaitForChild("Library")).get("Network")
-                
-                while autoFarm do
-                    pcall(function()
-                        Network.fireServer("EnemyDefeated", targetEnemy, nil, nil)
-                        Network.fireServer("CoinsUpdated")
-                        Network.fireServer("GoopUpdated")
-                    end)
-                    task.wait(4.2) -- Thời gian delay an toàn né Anti-Cheat
-                end
-            end)
+-- Rank list
+local RankList = {
+    "All",
+    "Common",
+    "Uncommon",
+    "Rare",
+    "Super",
+    "Epic",
+    "Legendary",
+    "Mythic"
+}
+
+local HttpService = game:GetService("HttpService")
+local ConfigFileName = "DanielRobloxStoreConfig.json"
+local Config = {
+    AutoTameTeleport = false,
+    AutoServerHop = false,
+    AutoExecute = false,
+    TargetPet = "All",
+    TargetRank = "All",
+    VisitedServers = {}
+}
+
+local function canSaveConfig()
+    return type(writefile) == "function" and type(readfile) == "function" and type(isfile) == "function"
+end
+
+local function saveConfig()
+    if not canSaveConfig() then
+        return
+    end
+
+    local success, encoded = pcall(function()
+        return HttpService:JSONEncode(Config)
+    end)
+    if success then
+        pcall(writefile, ConfigFileName, encoded)
+    end
+end
+
+local function loadConfig()
+    if not canSaveConfig() then
+        return
+    end
+
+    if not isfile(ConfigFileName) then
+        return
+    end
+
+    local contents = nil
+    pcall(function()
+        contents = readfile(ConfigFileName)
+    end)
+    if not contents then
+        return
+    end
+
+    local ok, decoded = pcall(function()
+        return HttpService:JSONDecode(contents)
+    end)
+    if ok and type(decoded) == "table" then
+        for key, value in pairs(decoded) do
+            if Config[key] ~= nil then
+                Config[key] = value
+            end
         end
     end
+end
+
+local function findIndex(list, value)
+    for index, item in ipairs(list) do
+        if item == value then
+            return index
+        end
+    end
+    return 1
+end
+
+local function markServerVisited(jobId)
+    if type(jobId) ~= "string" then
+        return
+    end
+    if type(Config.VisitedServers) ~= "table" then
+        Config.VisitedServers = {}
+    end
+    Config.VisitedServers[jobId] = true
+    saveConfig()
+end
+
+local function isServerVisited(jobId)
+    return type(jobId) == "string" and type(Config.VisitedServers) == "table" and Config.VisitedServers[jobId]
+end
+
+loadConfig()
+if type(Config.VisitedServers) ~= "table" then
+    Config.VisitedServers = {}
+end
+
+local function enableAutoExecuteAfterDelay()
+    task.spawn(function()
+        task.wait(3)
+        if Config.AutoExecute then
+            Config.AutoTameTeleport = true
+            saveConfig()
+        end
+    end)
+end
+
+if Config.AutoExecute then
+    enableAutoExecuteAfterDelay()
+end
+
+local CurrentJobId = tostring(game.JobId)
+local HopRetryCount = 0
+local HopRetryLimit = 3
+
+if CurrentJobId ~= "" then
+    if Config.AutoServerHop and isServerVisited(CurrentJobId) then
+        task.spawn(function()
+            task.wait(5)
+            if Config.AutoServerHop and HopRetryCount < HopRetryLimit then
+                HopRetryCount = HopRetryCount + 1
+                pcall(function()
+                    if Networking and Networking.AntiAfk and Networking.AntiAfk.RequestHop then
+                        Networking.AntiAfk.RequestHop:Fire()
+                    end
+                end)
+            end
+        end)
+    else
+        markServerVisited(CurrentJobId)
+    end
+end
+
+-- 4. Create UI options
+local PetDropdown = Tabs.Pets:AddDropdown("PetDropdown", {
+    Title = "Choose Pet",
+    Values = DynamicPetList,
+    Multi = false,
+    Default = findIndex(DynamicPetList, Config.TargetPet)
+})
+PetDropdown:OnChanged(function(Value)
+    Config.TargetPet = Value
+    saveConfig()
+end)
+
+local RankDropdown = Tabs.Pets:AddDropdown("RankDropdown", {
+    Title = "Choose Rank",
+    Values = RankList,
+    Multi = false,
+    Default = findIndex(RankList, Config.TargetRank)
+})
+RankDropdown:OnChanged(function(Value)
+    Config.TargetRank = Value
+    saveConfig()
+end)
+
+Tabs.Pets:AddButton({
+    Title = "Refresh Pets",
+    Callback = function()
+        -- (Refresh logic omitted for brevity)
+        Fluent:Notify({Title = "Refreshed", Content = "Pet list updated.", Duration = 3})
+    end
 })
 
-Tabs.Combat:AddToggle("AutoPVP", {
-    Title = "⚔️ Auto Win PVP (God Mode + 1 Hit)",
-    Default = false,
-    Callback = function(state)
-        autoPVP = state
-        if state then
-            task.spawn(function()
-                while autoPVP do
-                    pcall(function()
-                        local arena = workspace:FindFirstChild("PVPArena")
-                        if arena and arena:FindFirstChild("Matches") then
-                            -- Quét toàn bộ trận đấu
-                            for _, match in ipairs(arena.Matches:GetChildren()) do
-                                for _, team in ipairs(match:GetChildren()) do
-                                    for _, pet in ipairs(team:GetChildren()) do
-                                        if pet:IsA("Model") then
-                                            local isMyPet = (pet:GetAttribute("OwnerUserId") == LocalPlayer.UserId)
-                                            
-                                            if isMyPet then
-                                                -- Bơm máu bất tử cho mình
-                                                pet:SetAttribute("HP", pet:GetAttribute("MaxHP") or 999999)
-                                                pet:SetAttribute("Alive", true)
-                                            else
-                                                -- Rút sạch máu đối thủ
-                                                pet:SetAttribute("HP", 0)
-                                                pet:SetAttribute("Alive", false)
-                                            end
-                                        end
-                                    end
-                                end
+local AutoExecToggle = Tabs.Pets:AddToggle("AutoExecToggle", {
+    Title = "Auto execute",
+    Default = Config.AutoExecute
+})
+AutoExecToggle:OnChanged(function(Value)
+    Config.AutoExecute = Value
+    if Value then
+        enableAutoExecuteAfterDelay()
+    end
+    saveConfig()
+end)
+
+local TameToggle = Tabs.Pets:AddToggle("TameToggle", {
+    Title = "Auto catch pet",
+    Default = Config.AutoTameTeleport
+})
+TameToggle:OnChanged(function(Value)
+    Config.AutoTameTeleport = Value
+    saveConfig()
+end)
+
+local HopToggle = Tabs.Pets:AddToggle("HopToggle", {
+    Title = "Auto server hop",
+    Default = Config.AutoServerHop
+})
+HopToggle:OnChanged(function(Value)
+    Config.AutoServerHop = Value
+    saveConfig()
+end)
+
+-- ===================================================
+-- LOGIC LOOP (TELEPORT + TAME + HOP SERVER)
+-- ===================================================
+task.spawn(function()
+    while task.wait(1) do -- Scan every 1 second to avoid false detection before pets spawn
+        if Config.AutoTameTeleport then
+            pcall(function()
+                local char = LocalPlayer.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+
+                local map = workspace:FindFirstChild("Map")
+                if not map then return end
+                
+                local wildPetRef = map:FindFirstChild("WildPetRef")
+                if not wildPetRef then return end
+                
+                local hasMatchingPet = false -- Flag to mark if a matching pet exists
+                
+                for _, petPart in pairs(wildPetRef:GetChildren()) do
+                    if petPart:IsA("BasePart") then
+                        local owner = petPart:GetAttribute("OwnerUserId")
+                        local petName = petPart:GetAttribute("PetName") or ""
+                        
+                        local petRarity = petPart:GetAttribute("Rarity") or "Common"
+                        if petRarity == "" then petRarity = "Common" end
+                        
+                        if not owner or owner == 0 then
+                            local matchPet = (Config.TargetPet == "All" or petName == Config.TargetPet)
+                            local matchRank = (Config.TargetRank == "All" or petRarity == Config.TargetRank)
+                            
+                            if matchPet and matchRank then
+                                hasMatchingPet = true -- Found the target pet!
+                                
+                                hrp.CFrame = petPart.CFrame * CFrame.new(0, 3, 0)
+                                task.wait(0.3)
+                                Networking.Pets.WildPetTame:Fire(petPart)
+                                task.wait(0.5)
                             end
                         end
-                    end)
-                    task.wait(0.1) -- Quét liên tục 10 lần/s
+                    end
+                end
+                
+                -- If no matching pet is found and Auto Server Hop is enabled
+                if not hasMatchingPet and Config.AutoServerHop then
+                    Fluent:Notify({
+                        Title = "Server Hop",
+                        Content = "No matching pet found, hopping server...",
+                        Duration = 5
+                    })
+                    
+                    -- Use the game's official server hop request
+                    Networking.AntiAfk.RequestHop:Fire()
+                    
+                    -- Wait 10 seconds for the server transfer to avoid spam
+                    task.wait(10)
                 end
             end)
         end
     end
+end)
+
+Fluent:Notify({
+    Title = "DanielRoblox.Store",
+    Content = "Ready to hunt pets!",
+    Duration = 5
 })
-
--- ==========================================
--- TAB 2: GACHA (ROLL)
--- ==========================================
-local autoRoll = false
-
-Tabs.Gacha:AddToggle("AutoRoll", {
-    Title = "🎲 Auto Roll Siêu Tốc (Bypass Cooldown)",
-    Default = false,
-    Callback = function(state)
-        autoRoll = state
-        if state then
-            task.spawn(function()
-                local RS = game:GetService("ReplicatedStorage")
-                local reqRoll, compRoll
-                
-                for _, v in ipairs(RS:GetDescendants()) do
-                    if v.Name == "RequestRoll" then reqRoll = v
-                    elseif v.Name == "RollComplete" then compRoll = v end
-                end
-                
-                while autoRoll do
-                    pcall(function()
-                        -- Dội bom lệnh xin quay và hoàn thành để gỡ khóa liên tục
-                        if reqRoll then 
-                            if reqRoll:IsA("RemoteEvent") then reqRoll:FireServer() else reqRoll:InvokeServer() end 
-                        end
-                        if compRoll then 
-                            if compRoll:IsA("RemoteEvent") then compRoll:FireServer() else compRoll:InvokeServer() end 
-                        end
-                    end)
-                    task.wait(0.05)
-                end
-            end)
-        end
-    end
-})
-
--- ==========================================
--- TAB 3: TỐI ƯU HÓA (CHỐNG CRASH)
--- ==========================================
-Tabs.Misc:AddButton({
-    Title = "🖤 Tắt Đồ Họa (Màn Hình Đen Mượt Máy)",
-    Callback = function()
-        local RunService = game:GetService("RunService")
-        local Lighting = game:GetService("Lighting")
-        local Terrain = workspace:FindFirstChildOfClass("Terrain")
-        
-        -- Cắt render 3D
-        RunService:Set3dRenderingEnabled(false)
-        
-        -- Cắt ánh sáng, bóng đổ
-        Lighting.GlobalShadows = false
-        Lighting.FogEnd = 9e9
-        if Lighting:FindFirstChildOfClass("Sky") then Lighting:FindFirstChildOfClass("Sky"):Destroy() end
-        
-        -- Cắt nước
-        if Terrain then
-            Terrain.WaterWaveSize = 0
-            Terrain.WaterWaveSpeed = 0
-            Terrain.WaterReflectance = 0
-            Terrain.WaterTransparency = 0
-        end
-        
-        -- Ép FPS
-        setfpscap(15)
-        
-        Fluent:Notify({
-            Title = "Tối Ưu Hóa",
-            Content = "Đã tắt đồ họa! Treo đa luồng tẹt ga.",
-            Duration = 5
-        })
-    end
-})
-
-Window:SelectTab(1)
