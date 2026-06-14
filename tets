@@ -1,9 +1,11 @@
 -- ===================================================
--- DANIELROBLOX.STORE - FLUENT UI (AUTO SCAN PET + RANK + SERVER HOP)
+-- DANIELROBLOX.STORE - FLUENT UI (FIX LỖI HOP KẸT SERVER BẠN BÈ)
 -- ===================================================
 
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
 local Networking = require(RS:WaitForChild("SharedModules"):WaitForChild("Networking"))
@@ -50,15 +52,13 @@ local RankList = {
     "Mythic"
 }
 
-local HttpService = game:GetService("HttpService")
 local ConfigFileName = "DanielRobloxStoreConfig.json"
 local Config = {
     AutoTameTeleport = false,
     AutoServerHop = false,
     AutoExecute = false,
     TargetPet = "All",
-    TargetRank = "All",
-    VisitedServers = {}
+    TargetRank = "All"
 }
 
 local function canSaveConfig()
@@ -66,75 +66,25 @@ local function canSaveConfig()
 end
 
 local function saveConfig()
-    if not canSaveConfig() then
-        return
-    end
-
-    local success, encoded = pcall(function()
-        return HttpService:JSONEncode(Config)
-    end)
-    if success then
-        pcall(writefile, ConfigFileName, encoded)
-    end
+    if not canSaveConfig() then return end
+    local success, encoded = pcall(function() return HttpService:JSONEncode(Config) end)
+    if success then pcall(writefile, ConfigFileName, encoded) end
 end
 
 local function loadConfig()
-    if not canSaveConfig() then
-        return
-    end
-
-    if not isfile(ConfigFileName) then
-        return
-    end
-
+    if not canSaveConfig() or not isfile(ConfigFileName) then return end
     local contents = nil
-    pcall(function()
-        contents = readfile(ConfigFileName)
-    end)
-    if not contents then
-        return
-    end
-
-    local ok, decoded = pcall(function()
-        return HttpService:JSONDecode(contents)
-    end)
+    pcall(function() contents = readfile(ConfigFileName) end)
+    if not contents then return end
+    local ok, decoded = pcall(function() return HttpService:JSONDecode(contents) end)
     if ok and type(decoded) == "table" then
         for key, value in pairs(decoded) do
-            if Config[key] ~= nil then
-                Config[key] = value
-            end
+            if Config[key] ~= nil then Config[key] = value end
         end
     end
-end
-
-local function findIndex(list, value)
-    for index, item in ipairs(list) do
-        if item == value then
-            return index
-        end
-    end
-    return 1
-end
-
-local function markServerVisited(jobId)
-    if type(jobId) ~= "string" then
-        return
-    end
-    if type(Config.VisitedServers) ~= "table" then
-        Config.VisitedServers = {}
-    end
-    Config.VisitedServers[jobId] = true
-    saveConfig()
-end
-
-local function isServerVisited(jobId)
-    return type(jobId) == "string" and type(Config.VisitedServers) == "table" and Config.VisitedServers[jobId]
 end
 
 loadConfig()
-if type(Config.VisitedServers) ~= "table" then
-    Config.VisitedServers = {}
-end
 
 local function enableAutoExecuteAfterDelay()
     task.spawn(function()
@@ -146,30 +96,42 @@ local function enableAutoExecuteAfterDelay()
     end)
 end
 
-if Config.AutoExecute then
-    enableAutoExecuteAfterDelay()
+if Config.AutoExecute then enableAutoExecuteAfterDelay() end
+
+-- ===================================================
+-- HỆ THỐNG CUSTOM SERVER HOP (NÉ BẠN BÈ / SERVER CŨ)
+-- ===================================================
+local function CustomServerHop()
+    local PlaceId = game.PlaceId
+    local ApiUrl = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+    
+    pcall(function()
+        local response = game:HttpGet(ApiUrl)
+        local data = HttpService:JSONDecode(response)
+        
+        if data and data.data then
+            local availableServers = {}
+            for _, server in ipairs(data.data) do
+                -- Lọc: Server không đầy & Khác với server hiện tại
+                if type(server) == "table" and server.playing < server.maxPlayers - 1 and server.id ~= game.JobId then
+                    table.insert(availableServers, server.id)
+                end
+            end
+            
+            if #availableServers > 0 then
+                -- Chọn random 1 server trong danh sách để tránh bị dồn chung với các bot khác
+                local randomServerId = availableServers[math.random(1, #availableServers)]
+                TeleportService:TeleportToPlaceInstance(PlaceId, randomServerId, LocalPlayer)
+            end
+        end
+    end)
 end
 
-local CurrentJobId = tostring(game.JobId)
-local HopRetryCount = 0
-local HopRetryLimit = 3
-
-if CurrentJobId ~= "" then
-    if Config.AutoServerHop and isServerVisited(CurrentJobId) then
-        task.spawn(function()
-            task.wait(5)
-            if Config.AutoServerHop and HopRetryCount < HopRetryLimit then
-                HopRetryCount = HopRetryCount + 1
-                pcall(function()
-                    if Networking and Networking.AntiAfk and Networking.AntiAfk.RequestHop then
-                        Networking.AntiAfk.RequestHop:Fire()
-                    end
-                end)
-            end
-        end)
-    else
-        markServerVisited(CurrentJobId)
+local function findIndex(list, value)
+    for index, item in ipairs(list) do
+        if item == value then return index end
     end
+    return 1
 end
 
 -- 4. Create UI options
@@ -187,47 +149,6 @@ end)
 local RankDropdown = Tabs.Pets:AddDropdown("RankDropdown", {
     Title = "Choose Rank",
     Values = RankList,
--- Helper: request a server hop with retry and visited tracking
-local function requestServerHop()
-    local oldJob = tostring(game.JobId or "")
-    if oldJob ~= "" then
-        markServerVisited(oldJob)
-    end
-
-    pcall(function()
-        if Networking and Networking.AntiAfk and Networking.AntiAfk.RequestHop then
-            Networking.AntiAfk.RequestHop:Fire()
-        end
-    end)
-
-    task.wait(10)
-
-    local newJob = tostring(game.JobId or "")
-    if newJob == oldJob or newJob == "" then
-        HopRetryCount = HopRetryCount + 1
-        if HopRetryCount < HopRetryLimit then
-            return false -- signal to caller to retry
-        else
-            HopRetryCount = 0
-            -- If we've retried several times, clear visited list to avoid deadlocks
-            Config.VisitedServers = {}
-            saveConfig()
-            Fluent:Notify({
-                Title = "Server Hop",
-                Content = "Couldn't find a new server; cleared visited list.",
-                Duration = 5
-            })
-            return true
-        end
-    end
-
-    HopRetryCount = 0
-    if newJob ~= "" then
-        markServerVisited(newJob)
-    end
-    return true
-end
-
     Multi = false,
     Default = findIndex(RankList, Config.TargetRank)
 })
@@ -239,20 +160,27 @@ end)
 Tabs.Pets:AddButton({
     Title = "Refresh Pets",
     Callback = function()
-        -- (Refresh logic omitted for brevity)
+        local newList = {"All"}
+        for pName, _ in pairs(require(RS:WaitForChild("SharedModules"):WaitForChild("PetModules"))) do
+            table.insert(newList, pName)
+        end
+        table.sort(newList, function(a, b)
+            if a == "All" then return true end
+            if b == "All" then return false end
+            return a < b
+        end)
+        PetDropdown:SetValues(newList)
         Fluent:Notify({Title = "Refreshed", Content = "Pet list updated.", Duration = 3})
     end
 })
 
 local AutoExecToggle = Tabs.Pets:AddToggle("AutoExecToggle", {
-    Title = "Auto execute",
+    Title = "Auto execute (Save State)",
     Default = Config.AutoExecute
 })
 AutoExecToggle:OnChanged(function(Value)
     Config.AutoExecute = Value
-    if Value then
-        enableAutoExecuteAfterDelay()
-    end
+    if Value then enableAutoExecuteAfterDelay() end
     saveConfig()
 end)
 
@@ -278,7 +206,7 @@ end)
 -- LOGIC LOOP (TELEPORT + TAME + HOP SERVER)
 -- ===================================================
 task.spawn(function()
-    while task.wait(1) do -- Scan every 1 second to avoid false detection before pets spawn
+    while task.wait(1) do 
         if Config.AutoTameTeleport then
             pcall(function()
                 local char = LocalPlayer.Character
@@ -291,7 +219,7 @@ task.spawn(function()
                 local wildPetRef = map:FindFirstChild("WildPetRef")
                 if not wildPetRef then return end
                 
-                local hasMatchingPet = false -- Flag to mark if a matching pet exists
+                local hasMatchingPet = false 
                 
                 for _, petPart in pairs(wildPetRef:GetChildren()) do
                     if petPart:IsA("BasePart") then
@@ -306,32 +234,28 @@ task.spawn(function()
                             local matchRank = (Config.TargetRank == "All" or petRarity == Config.TargetRank)
                             
                             if matchPet and matchRank then
-                                hasMatchingPet = true -- Found the target pet!
+                                hasMatchingPet = true 
                                 
                                 hrp.CFrame = petPart.CFrame * CFrame.new(0, 3, 0)
-                                task.wait(0.3)
+                                task.wait(0.4) -- Đợi Ping load
                                 Networking.Pets.WildPetTame:Fire(petPart)
-                                task.wait(0.5)
+                                task.wait(0.6)
                             end
                         end
                     end
                 end
                 
-                -- If no matching pet is found and Auto Server Hop is enabled
+                -- HẾT PET -> DÙNG CUSTOM HOP MỚI
                 if not hasMatchingPet and Config.AutoServerHop then
                     Fluent:Notify({
                         Title = "Server Hop",
-                        Content = "No matching pet found, hopping server...",
+                        Content = "No matching pet. Searching for a completely new server...",
                         Duration = 5
                     })
-
-                    -- Try to hop servers safely (marks visited, retries if we land back)
-                    local hopped = false
-                    local tryCount = 0
-                    repeat
-                        hopped = requestServerHop()
-                        tryCount = tryCount + 1
-                    until hopped or tryCount >= (HopRetryLimit + 1)
+                    
+                    CustomServerHop()
+                    
+                    task.wait(10)
                 end
             end)
         end
@@ -340,6 +264,6 @@ end)
 
 Fluent:Notify({
     Title = "DanielRoblox.Store",
-    Content = "Ready to hunt pets!",
+    Content = "Advanced Server Hop is ready!",
     Duration = 5
 })
