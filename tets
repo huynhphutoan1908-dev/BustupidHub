@@ -1,5 +1,5 @@
 -- ===================================================
--- DANIELROBLOX.STORE - FLUENT UI (FIX LỖI HOP KẸT SERVER BẠN BÈ)
+-- DANIELROBLOX.STORE - FLUENT UI (ANTI ERROR 773 & HOP SERVER)
 -- ===================================================
 
 local Players = game:GetService("Players")
@@ -11,10 +11,8 @@ local LocalPlayer = Players.LocalPlayer
 local Networking = require(RS:WaitForChild("SharedModules"):WaitForChild("Networking"))
 local PetModules = require(RS:WaitForChild("SharedModules"):WaitForChild("PetModules"))
 
--- 1. Load Fluent UI library
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
--- 2. Create menu window
 local Window = Fluent:CreateWindow({
     Title = "DanielRoblox.Store",
     SubTitle = "Auto Pet",
@@ -23,34 +21,16 @@ local Window = Fluent:CreateWindow({
     Theme = "Darker"
 })
 
-local Tabs = {
-    Pets = Window:AddTab({ Title = "Catch Pets", Icon = "paw" })
-}
+local Tabs = { Pets = Window:AddTab({ Title = "Catch Pets", Icon = "paw" }) }
 
--- 3. AUTO PET SCAN SYSTEM
+-- Quét Pet
 local DynamicPetList = {"All"}
 for petName, _ in pairs(PetModules) do
-    if type(petName) == "string" then
-        table.insert(DynamicPetList, petName)
-    end
+    if type(petName) == "string" then table.insert(DynamicPetList, petName) end
 end
-table.sort(DynamicPetList, function(a, b)
-    if a == "All" then return true end
-    if b == "All" then return false end
-    return a < b
-end)
+table.sort(DynamicPetList, function(a, b) return a == "All" or (b ~= "All" and a < b) end)
 
--- Rank list
-local RankList = {
-    "All",
-    "Common",
-    "Uncommon",
-    "Rare",
-    "Super",
-    "Epic",
-    "Legendary",
-    "Mythic"
-}
+local RankList = {"All", "Common", "Uncommon", "Rare", "Super", "Epic", "Legendary", "Mythic"}
 
 local ConfigFileName = "DanielRobloxStoreConfig.json"
 local Config = {
@@ -61,30 +41,17 @@ local Config = {
     TargetRank = "All"
 }
 
-local function canSaveConfig()
-    return type(writefile) == "function" and type(readfile) == "function" and type(isfile) == "function"
-end
-
+-- Hệ thống lưu cấu hình
+local function canSaveConfig() return type(writefile) == "function" end
 local function saveConfig()
-    if not canSaveConfig() then return end
-    local success, encoded = pcall(function() return HttpService:JSONEncode(Config) end)
-    if success then pcall(writefile, ConfigFileName, encoded) end
+    if canSaveConfig() then pcall(writefile, ConfigFileName, HttpService:JSONEncode(Config)) end
 end
-
-local function loadConfig()
-    if not canSaveConfig() or not isfile(ConfigFileName) then return end
-    local contents = nil
-    pcall(function() contents = readfile(ConfigFileName) end)
-    if not contents then return end
-    local ok, decoded = pcall(function() return HttpService:JSONDecode(contents) end)
-    if ok and type(decoded) == "table" then
-        for key, value in pairs(decoded) do
-            if Config[key] ~= nil then Config[key] = value end
-        end
-    end
+if canSaveConfig() and isfile(ConfigFileName) then
+    pcall(function()
+        local decoded = HttpService:JSONDecode(readfile(ConfigFileName))
+        for k, v in pairs(decoded) do if Config[k] ~= nil then Config[k] = v end end
+    end)
 end
-
-loadConfig()
 
 local function enableAutoExecuteAfterDelay()
     task.spawn(function()
@@ -95,115 +62,74 @@ local function enableAutoExecuteAfterDelay()
         end
     end)
 end
-
 if Config.AutoExecute then enableAutoExecuteAfterDelay() end
 
 -- ===================================================
--- HỆ THỐNG CUSTOM SERVER HOP (NÉ BẠN BÈ / SERVER CŨ)
+-- CUSTOM HOP FIX LỖI 773 CỰC MẠNH
 -- ===================================================
 local function CustomServerHop()
     local PlaceId = game.PlaceId
-    local ApiUrl = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+    -- Đổi sang Desc để lấy server đông nhưng chưa đầy, tránh server rác bị lỗi 773
+    local ApiUrl = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100"
     
     pcall(function()
         local response = game:HttpGet(ApiUrl)
         local data = HttpService:JSONDecode(response)
         
         if data and data.data then
-            local availableServers = {}
+            local validServers = {}
             for _, server in ipairs(data.data) do
-                -- Lọc: Server không đầy & Khác với server hiện tại
-                if type(server) == "table" and server.playing < server.maxPlayers - 1 and server.id ~= game.JobId then
-                    table.insert(availableServers, server.id)
+                -- CHỐNG LỖI 773: Bắt buộc server phải còn trống ít nhất 3 slot (maxPlayers - 3)
+                if type(server) == "table" and server.playing < (server.maxPlayers - 3) and server.id ~= game.JobId then
+                    table.insert(validServers, server.id)
                 end
             end
             
-            if #availableServers > 0 then
-                -- Chọn random 1 server trong danh sách để tránh bị dồn chung với các bot khác
-                local randomServerId = availableServers[math.random(1, #availableServers)]
-                TeleportService:TeleportToPlaceInstance(PlaceId, randomServerId, LocalPlayer)
+            if #validServers > 0 then
+                local targetServer = validServers[math.random(1, #validServers)]
+                TeleportService:TeleportToPlaceInstance(PlaceId, targetServer, LocalPlayer)
+            else
+                -- Nếu không tìm được server qua API, dùng lệnh backup của game
+                Networking.AntiAfk.RequestHop:Fire()
             end
         end
     end)
 end
 
 local function findIndex(list, value)
-    for index, item in ipairs(list) do
-        if item == value then return index end
-    end
+    for index, item in ipairs(list) do if item == value then return index end end
     return 1
 end
 
--- 4. Create UI options
-local PetDropdown = Tabs.Pets:AddDropdown("PetDropdown", {
-    Title = "Choose Pet",
-    Values = DynamicPetList,
-    Multi = false,
-    Default = findIndex(DynamicPetList, Config.TargetPet)
-})
-PetDropdown:OnChanged(function(Value)
-    Config.TargetPet = Value
-    saveConfig()
-end)
+-- UI
+local PetDropdown = Tabs.Pets:AddDropdown("PetDropdown", { Title = "Choose Pet", Values = DynamicPetList, Multi = false, Default = findIndex(DynamicPetList, Config.TargetPet) })
+PetDropdown:OnChanged(function(Value) Config.TargetPet = Value; saveConfig() end)
 
-local RankDropdown = Tabs.Pets:AddDropdown("RankDropdown", {
-    Title = "Choose Rank",
-    Values = RankList,
-    Multi = false,
-    Default = findIndex(RankList, Config.TargetRank)
-})
-RankDropdown:OnChanged(function(Value)
-    Config.TargetRank = Value
-    saveConfig()
-end)
+local RankDropdown = Tabs.Pets:AddDropdown("RankDropdown", { Title = "Choose Rank", Values = RankList, Multi = false, Default = findIndex(RankList, Config.TargetRank) })
+RankDropdown:OnChanged(function(Value) Config.TargetRank = Value; saveConfig() end)
 
 Tabs.Pets:AddButton({
     Title = "Refresh Pets",
     Callback = function()
         local newList = {"All"}
-        for pName, _ in pairs(require(RS:WaitForChild("SharedModules"):WaitForChild("PetModules"))) do
-            table.insert(newList, pName)
-        end
-        table.sort(newList, function(a, b)
-            if a == "All" then return true end
-            if b == "All" then return false end
-            return a < b
-        end)
+        for pName, _ in pairs(require(RS:WaitForChild("SharedModules"):WaitForChild("PetModules"))) do table.insert(newList, pName) end
+        table.sort(newList, function(a, b) return a == "All" or (b ~= "All" and a < b) end)
         PetDropdown:SetValues(newList)
         Fluent:Notify({Title = "Refreshed", Content = "Pet list updated.", Duration = 3})
     end
 })
 
-local AutoExecToggle = Tabs.Pets:AddToggle("AutoExecToggle", {
-    Title = "Auto execute (Save State)",
-    Default = Config.AutoExecute
-})
-AutoExecToggle:OnChanged(function(Value)
-    Config.AutoExecute = Value
-    if Value then enableAutoExecuteAfterDelay() end
-    saveConfig()
-end)
+local AutoExecToggle = Tabs.Pets:AddToggle("AutoExecToggle", { Title = "Auto execute (Save State)", Default = Config.AutoExecute })
+AutoExecToggle:OnChanged(function(Value) Config.AutoExecute = Value; if Value then enableAutoExecuteAfterDelay() end; saveConfig() end)
 
-local TameToggle = Tabs.Pets:AddToggle("TameToggle", {
-    Title = "Auto catch pet",
-    Default = Config.AutoTameTeleport
-})
-TameToggle:OnChanged(function(Value)
-    Config.AutoTameTeleport = Value
-    saveConfig()
-end)
+local TameToggle = Tabs.Pets:AddToggle("TameToggle", { Title = "Auto catch pet", Default = Config.AutoTameTeleport })
+TameToggle:OnChanged(function(Value) Config.AutoTameTeleport = Value; saveConfig() end)
 
-local HopToggle = Tabs.Pets:AddToggle("HopToggle", {
-    Title = "Auto server hop",
-    Default = Config.AutoServerHop
-})
-HopToggle:OnChanged(function(Value)
-    Config.AutoServerHop = Value
-    saveConfig()
-end)
+local HopToggle = Tabs.Pets:AddToggle("HopToggle", { Title = "Auto server hop", Default = Config.AutoServerHop })
+HopToggle:OnChanged(function(Value) Config.AutoServerHop = Value; saveConfig() end)
 
 -- ===================================================
--- LOGIC LOOP (TELEPORT + TAME + HOP SERVER)
+-- VÒNG LẶP SĂN PET
 -- ===================================================
 task.spawn(function()
     while task.wait(1) do 
@@ -211,13 +137,8 @@ task.spawn(function()
             pcall(function()
                 local char = LocalPlayer.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                if not hrp then return end
-
-                local map = workspace:FindFirstChild("Map")
-                if not map then return end
-                
-                local wildPetRef = map:FindFirstChild("WildPetRef")
-                if not wildPetRef then return end
+                local wildPetRef = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("WildPetRef")
+                if not hrp or not wildPetRef then return end
                 
                 local hasMatchingPet = false 
                 
@@ -225,7 +146,6 @@ task.spawn(function()
                     if petPart:IsA("BasePart") then
                         local owner = petPart:GetAttribute("OwnerUserId")
                         local petName = petPart:GetAttribute("PetName") or ""
-                        
                         local petRarity = petPart:GetAttribute("Rarity") or "Common"
                         if petRarity == "" then petRarity = "Common" end
                         
@@ -235,9 +155,8 @@ task.spawn(function()
                             
                             if matchPet and matchRank then
                                 hasMatchingPet = true 
-                                
                                 hrp.CFrame = petPart.CFrame * CFrame.new(0, 3, 0)
-                                task.wait(0.4) -- Đợi Ping load
+                                task.wait(0.4) 
                                 Networking.Pets.WildPetTame:Fire(petPart)
                                 task.wait(0.6)
                             end
@@ -245,25 +164,14 @@ task.spawn(function()
                     end
                 end
                 
-                -- HẾT PET -> DÙNG CUSTOM HOP MỚI
                 if not hasMatchingPet and Config.AutoServerHop then
-                    Fluent:Notify({
-                        Title = "Server Hop",
-                        Content = "No matching pet. Searching for a completely new server...",
-                        Duration = 5
-                    })
-                    
+                    Fluent:Notify({ Title = "Server Hop", Content = "No matching pet. Bypassing Error 773 & Hopping...", Duration = 4 })
                     CustomServerHop()
-                    
-                    task.wait(10)
+                    task.wait(12) -- Đợi 12s để tránh rate limit của Roblox gây lỗi 773
                 end
             end)
         end
     end
 end)
 
-Fluent:Notify({
-    Title = "DanielRoblox.Store",
-    Content = "Advanced Server Hop is ready!",
-    Duration = 5
-})
+Fluent:Notify({ Title = "DanielRoblox.Store", Content = "Anti-Error 773 Hop is ready!", Duration = 5 })
