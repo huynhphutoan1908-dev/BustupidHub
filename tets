@@ -187,6 +187,47 @@ end)
 local RankDropdown = Tabs.Pets:AddDropdown("RankDropdown", {
     Title = "Choose Rank",
     Values = RankList,
+-- Helper: request a server hop with retry and visited tracking
+local function requestServerHop()
+    local oldJob = tostring(game.JobId or "")
+    if oldJob ~= "" then
+        markServerVisited(oldJob)
+    end
+
+    pcall(function()
+        if Networking and Networking.AntiAfk and Networking.AntiAfk.RequestHop then
+            Networking.AntiAfk.RequestHop:Fire()
+        end
+    end)
+
+    task.wait(10)
+
+    local newJob = tostring(game.JobId or "")
+    if newJob == oldJob or newJob == "" then
+        HopRetryCount = HopRetryCount + 1
+        if HopRetryCount < HopRetryLimit then
+            return false -- signal to caller to retry
+        else
+            HopRetryCount = 0
+            -- If we've retried several times, clear visited list to avoid deadlocks
+            Config.VisitedServers = {}
+            saveConfig()
+            Fluent:Notify({
+                Title = "Server Hop",
+                Content = "Couldn't find a new server; cleared visited list.",
+                Duration = 5
+            })
+            return true
+        end
+    end
+
+    HopRetryCount = 0
+    if newJob ~= "" then
+        markServerVisited(newJob)
+    end
+    return true
+end
+
     Multi = false,
     Default = findIndex(RankList, Config.TargetRank)
 })
@@ -283,12 +324,14 @@ task.spawn(function()
                         Content = "No matching pet found, hopping server...",
                         Duration = 5
                     })
-                    
-                    -- Use the game's official server hop request
-                    Networking.AntiAfk.RequestHop:Fire()
-                    
-                    -- Wait 10 seconds for the server transfer to avoid spam
-                    task.wait(10)
+
+                    -- Try to hop servers safely (marks visited, retries if we land back)
+                    local hopped = false
+                    local tryCount = 0
+                    repeat
+                        hopped = requestServerHop()
+                        tryCount = tryCount + 1
+                    until hopped or tryCount >= (HopRetryLimit + 1)
                 end
             end)
         end
