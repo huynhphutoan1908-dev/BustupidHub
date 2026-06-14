@@ -1,5 +1,5 @@
 -- ===================================================
--- DANIELROBLOX.STORE - FLUENT UI (ANTI ERROR 773 & HOP SERVER)
+-- DANIELROBLOX.STORE - FLUENT UI (ANTI ERROR 773 + DISCORD WEBHOOK)
 -- ===================================================
 
 local Players = game:GetService("Players")
@@ -15,9 +15,9 @@ local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/
 
 local Window = Fluent:CreateWindow({
     Title = "DanielRoblox.Store",
-    SubTitle = "Auto Pet",
+    SubTitle = "Auto Pet & Webhook",
     TabWidth = 160,
-    Size = UDim2.fromOffset(500, 420),
+    Size = UDim2.fromOffset(500, 480),
     Theme = "Darker"
 })
 
@@ -37,6 +37,8 @@ local Config = {
     AutoTameTeleport = false,
     AutoServerHop = false,
     AutoExecute = false,
+    UseWebhook = false,
+    WebhookURL = "",
     TargetPet = "All",
     TargetRank = "All"
 }
@@ -65,31 +67,62 @@ end
 if Config.AutoExecute then enableAutoExecuteAfterDelay() end
 
 -- ===================================================
--- CUSTOM HOP FIX LỖI 773 CỰC MẠNH
+-- HỆ THỐNG GỬI DISCORD WEBHOOK
+-- ===================================================
+local request_func = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+local function SendWebhook(petName, petRank)
+    if not Config.UseWebhook or Config.WebhookURL == "" or not request_func then return end
+    
+    local embedData = {
+        ["title"] = "🎉 BẮT THÀNH CÔNG THÚ CƯNG!",
+        ["color"] = 65280, -- Màu xanh lá
+        ["fields"] = {
+            {["name"] = "🐾 Tên Pet:", ["value"] = tostring(petName), ["inline"] = true},
+            {["name"] = "⭐ Độ Hiếm (Rank):", ["value"] = tostring(petRank), ["inline"] = true},
+            {["name"] = "👤 Tài Khoản:", ["value"] = "||" .. LocalPlayer.Name .. "||", ["inline"] = false}
+        },
+        ["footer"] = {["text"] = "DanielRoblox.Store | Auto Logger"}
+    }
+    
+    local payload = HttpService:JSONEncode({
+        ["username"] = "Daniel Store",
+        ["avatar_url"] = "https://i.imgur.com/8QG4sS4.png", -- Bạn có thể thay link logo của store vào đây
+        ["embeds"] = {embedData}
+    })
+    
+    task.spawn(function()
+        pcall(function()
+            request_func({
+                Url = Config.WebhookURL,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = payload
+            })
+        end)
+    end)
+end
+
+-- ===================================================
+-- CUSTOM HOP FIX LỖI 773
 -- ===================================================
 local function CustomServerHop()
     local PlaceId = game.PlaceId
-    -- Đổi sang Desc để lấy server đông nhưng chưa đầy, tránh server rác bị lỗi 773
     local ApiUrl = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100"
     
     pcall(function()
         local response = game:HttpGet(ApiUrl)
         local data = HttpService:JSONDecode(response)
-        
         if data and data.data then
             local validServers = {}
             for _, server in ipairs(data.data) do
-                -- CHỐNG LỖI 773: Bắt buộc server phải còn trống ít nhất 3 slot (maxPlayers - 3)
                 if type(server) == "table" and server.playing < (server.maxPlayers - 3) and server.id ~= game.JobId then
                     table.insert(validServers, server.id)
                 end
             end
-            
             if #validServers > 0 then
                 local targetServer = validServers[math.random(1, #validServers)]
                 TeleportService:TeleportToPlaceInstance(PlaceId, targetServer, LocalPlayer)
             else
-                -- Nếu không tìm được server qua API, dùng lệnh backup của game
                 Networking.AntiAfk.RequestHop:Fire()
             end
         end
@@ -101,7 +134,9 @@ local function findIndex(list, value)
     return 1
 end
 
--- UI
+-- ===================================================
+-- UI MENU
+-- ===================================================
 local PetDropdown = Tabs.Pets:AddDropdown("PetDropdown", { Title = "Choose Pet", Values = DynamicPetList, Multi = false, Default = findIndex(DynamicPetList, Config.TargetPet) })
 PetDropdown:OnChanged(function(Value) Config.TargetPet = Value; saveConfig() end)
 
@@ -118,6 +153,21 @@ Tabs.Pets:AddButton({
         Fluent:Notify({Title = "Refreshed", Content = "Pet list updated.", Duration = 3})
     end
 })
+
+local WebhookInput = Tabs.Pets:AddInput("WebhookInput", {
+    Title = "Discord Webhook URL",
+    Default = Config.WebhookURL,
+    Placeholder = "https://discord.com/api/webhooks/...",
+    Numeric = false,
+    Finished = false,
+    Callback = function(Value)
+        Config.WebhookURL = Value
+        saveConfig()
+    end
+})
+
+local WebhookToggle = Tabs.Pets:AddToggle("WebhookToggle", { Title = "Enable Webhook Logger", Default = Config.UseWebhook })
+WebhookToggle:OnChanged(function(Value) Config.UseWebhook = Value; saveConfig() end)
 
 local AutoExecToggle = Tabs.Pets:AddToggle("AutoExecToggle", { Title = "Auto execute (Save State)", Default = Config.AutoExecute })
 AutoExecToggle:OnChanged(function(Value) Config.AutoExecute = Value; if Value then enableAutoExecuteAfterDelay() end; saveConfig() end)
@@ -158,6 +208,10 @@ task.spawn(function()
                                 hrp.CFrame = petPart.CFrame * CFrame.new(0, 3, 0)
                                 task.wait(0.4) 
                                 Networking.Pets.WildPetTame:Fire(petPart)
+                                
+                                -- GỌI WEBHOOK BÁO KẾT QUẢ VỀ DISCORD!
+                                SendWebhook(petName, petRarity)
+                                
                                 task.wait(0.6)
                             end
                         end
@@ -167,11 +221,11 @@ task.spawn(function()
                 if not hasMatchingPet and Config.AutoServerHop then
                     Fluent:Notify({ Title = "Server Hop", Content = "No matching pet. Bypassing Error 773 & Hopping...", Duration = 4 })
                     CustomServerHop()
-                    task.wait(12) -- Đợi 12s để tránh rate limit của Roblox gây lỗi 773
+                    task.wait(12) 
                 end
             end)
         end
     end
 end)
 
-Fluent:Notify({ Title = "DanielRoblox.Store", Content = "Anti-Error 773 Hop is ready!", Duration = 5 })
+Fluent:Notify({ Title = "DanielRoblox.Store", Content = "Webhook & Anti-773 Ready!", Duration = 5 })
