@@ -105,28 +105,61 @@ end
 -- ===================================================
 -- CUSTOM HOP FIX LỖI 773
 -- ===================================================
-local function CustomServerHop()
-    local PlaceId = game.PlaceId
-    local ApiUrl = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100"
-    
-    pcall(function()
-        local response = game:HttpGet(ApiUrl)
-        local data = HttpService:JSONDecode(response)
-        if data and data.data then
-            local validServers = {}
-            for _, server in ipairs(data.data) do
-                if type(server) == "table" and server.playing < (server.maxPlayers - 3) and server.id ~= game.JobId then
-                    table.insert(validServers, server.id)
-                end
-            end
-            if #validServers > 0 then
-                local targetServer = validServers[math.random(1, #validServers)]
-                TeleportService:TeleportToPlaceInstance(PlaceId, targetServer, LocalPlayer)
-            else
-                Networking.AntiAfk.RequestHop:Fire()
+local recentServerIds = {}
+
+local function FetchServerPages(placeId, maxPages)
+    local servers = {}
+    local cursor = nil
+    for page = 1, maxPages or 5 do
+        local url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100"
+        if cursor then
+            url = url .. "&cursor=" .. HttpService:UrlEncode(cursor)
+        end
+
+        local success, result = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet(url))
+        end)
+        if not success or not result or not result.data then
+            break
+        end
+
+        for _, server in ipairs(result.data) do
+            if type(server) == "table" then
+                table.insert(servers, server)
             end
         end
+
+        if not result.nextPageCursor then
+            break
+        end
+        cursor = result.nextPageCursor
+    end
+    return servers
+end
+
+local function CustomServerHop()
+    Fluent:Notify({Title = "Hopping...", Content = "Finding a different server", Duration = 3})
+    local success, result = pcall(function()
+        return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
     end)
+    if success and result and result.data then
+        local validServers = {}
+        for _, server in ipairs(result.data) do
+            if server.id ~= game.JobId and not recentServerIds[server.id] then
+                table.insert(validServers, server.id)
+            end
+        end
+        if #validServers > 0 then
+            local randomServer = validServers[math.random(1, #validServers)]
+            recentServerIds[randomServer] = true
+            local count = 0
+            for _ in pairs(recentServerIds) do count = count + 1 end
+            if count > 5 then recentServerIds = {} end
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, randomServer, LocalPlayer)
+        else
+            Fluent:Notify({Title = "Error", Content = "No available servers found", Duration = 3})
+        end
+    end
 end
 
 local function findIndex(list, value)
@@ -178,6 +211,73 @@ TameToggle:OnChanged(function(Value) Config.AutoTameTeleport = Value; saveConfig
 local HopToggle = Tabs.Pets:AddToggle("HopToggle", { Title = "Auto server hop", Default = Config.AutoServerHop })
 HopToggle:OnChanged(function(Value) Config.AutoServerHop = Value; saveConfig() end)
 
+local function setToggleState(toggle, value)
+    if not toggle then return end
+    if type(toggle.Set) == "function" then
+        pcall(toggle.Set, toggle, value)
+    elseif type(toggle.SetValue) == "function" then
+        pcall(toggle.SetValue, toggle, value)
+    elseif type(toggle.SetState) == "function" then
+        pcall(toggle.SetState, toggle, value)
+    end
+end
+
+local ServerTab = Window:AddTab({ Title = "Server Control", Icon = "server" })
+
+ServerTab:AddSection("Server Control")
+ServerTab:AddButton({ Title = "📋 Copy Server ID", Callback = function() setclipboard(game.JobId) Fluent:Notify({Title="Copied", Content="Server ID Copied!"}) end })
+ServerTab:AddButton({ Title = "🔄 Rejoin Server", Callback = function() TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId) end })
+ServerTab:AddButton({ Title = "🔀 Server Hop", Callback = function()
+    Fluent:Notify({Title = "Hopping...", Content = "Finding a different server", Duration = 3})
+    local success, result = pcall(function() return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")) end)
+    if success and result and result.data then
+        local validServers = {}
+        for _, server in ipairs(result.data) do
+            if server.id ~= game.JobId and not recentServerIds[server.id] then table.insert(validServers, server.id) end
+        end
+        if #validServers > 0 then
+            local randomServer = validServers[math.random(1, #validServers)]
+            recentServerIds[randomServer] = true
+            local count = 0
+            for _ in pairs(recentServerIds) do count = count + 1 end
+            if count > 5 then recentServerIds = {} end
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, randomServer)
+        else
+            Fluent:Notify({Title = "Error", Content = "No available servers found", Duration = 3})
+        end
+    end
+end })
+ServerTab:AddInput("JoinServerInput", { Title = "Join Server by ID", Placeholder = "Enter JobId here...", Callback = function(JobId) if JobId and #JobId > 0 then TeleportService:TeleportToPlaceInstance(game.PlaceId, JobId) end end })
+ServerTab:AddButton({ Title = "👥 Join Low Server", Callback = function()
+    Fluent:Notify({Title = "Searching...", Content = "Finding a quiet server", Duration = 4})
+    local currentJobId = tostring(game.JobId)
+    local servers = FetchServerPages(game.PlaceId, 5)
+    local chosenServer = nil
+    for _, server in ipairs(servers) do
+        if type(server) == "table" and server.id and server.playing and tostring(server.id) ~= currentJobId and server.playing < 8 then
+            local serverId = tostring(server.id)
+            if not recentServerIds[serverId] then
+                chosenServer = serverId
+                break
+            end
+        end
+    end
+    if not chosenServer then
+        for _, server in ipairs(servers) do
+            if type(server) == "table" and server.id and server.playing and tostring(server.id) ~= currentJobId and server.playing < 8 then
+                chosenServer = tostring(server.id)
+                break
+            end
+        end
+    end
+    if chosenServer then
+        recentServerIds[chosenServer] = true
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, chosenServer)
+    else
+        Fluent:Notify({Title = "Info", Content = "No quiet servers found", Duration = 3})
+    end
+end })
+
 -- ===================================================
 -- VÒNG LẶP SĂN PET
 -- ===================================================
@@ -208,9 +308,13 @@ task.spawn(function()
                                 hrp.CFrame = petPart.CFrame * CFrame.new(0, 3, 0)
                                 task.wait(0.4) 
                                 Networking.Pets.WildPetTame:Fire(petPart)
-                                
+
                                 -- GỌI WEBHOOK BÁO KẾT QUẢ VỀ DISCORD!
                                 SendWebhook(petName, petRarity)
+                                
+                                Config.AutoServerHop = false
+                                saveConfig()
+                                setToggleState(HopToggle, false)
                                 
                                 task.wait(0.6)
                             end
