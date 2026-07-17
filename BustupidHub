@@ -1,6 +1,6 @@
 -- =====================================================================
--- 💎 HUYNH TOANN HUB | HAZE SEAS PROJECT V2.11.1
--- Update: Fix bug Server Hop cũ, Fix lụm chuỗi liên tục, Chống kẹt Tween
+-- 💎 HUYNH TOANN HUB | HAZE SEAS PROJECT V2.12
+-- Update: Smart Teleport Bypass, Bay 3 pha, Fix Server Hop, Chống kẹt
 -- =====================================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -14,6 +14,11 @@ local TeleportService = game:GetService("TeleportService")
 
 local Player = Players.LocalPlayer
 
+-- Tham chiếu cho Smart Teleport Bypass
+local SetSpawnEvent = ReplicatedStorage:WaitForChild("Replication"):WaitForChild("ClientEvents"):WaitForChild("SetSpawnPoint")
+local SpawnSetters = Workspace:WaitForChild("Npc_Workspace"):WaitForChild("Spawn Setters")
+local Logic = Workspace:WaitForChild("Logic")
+
 -- ==========================================
 -- 1. TRẠNG THÁI HỆ THỐNG
 -- ==========================================
@@ -26,9 +31,10 @@ local HubState = {
         AutoHop = true    
     },
     Settings = {
-        FlySpeed = 400,
+        FlySpeed = 300,
         HopDelay = 15,
-        MinPlayersHop = 9  -- Chỉ hop vào server >= 9 người (tối đa 12)
+        MinPlayersHop = 9,  -- Chỉ hop vào server >= 9 người (tối đa 12)
+        TeleportThreshold = 800  -- Khoảng cách > 800 stud → dùng Bypass Teleport
     },
     Connections = {}, 
     Objects = { CurrentTween = nil }
@@ -234,34 +240,63 @@ local function ToggleESP(state)
 end
 
 -- ==========================================
--- 4. MODULE: AUTO GOM FRUIT (ĐÃ VIẾT LẠI HOÀN TOÀN)
+-- 4. MODULE: AUTO GOM FRUIT + SMART TELEPORT BYPASS
 -- ==========================================
+
+-- Hàm lấy CFrame an toàn cho mọi loại object
+local function GetCFrame(obj)
+    if obj:IsA("Model") then return obj:GetPivot()
+    elseif obj:IsA("BasePart") then return obj.CFrame
+    else
+        local part = obj:FindFirstChildWhichIsA("BasePart", true)
+        if part then return part.CFrame end
+    end
+    return nil
+end
+
+-- Hàm tìm đảo gần trái nhất (Smart Math)
+local function GetClosestIslandToFruit(fruitPos)
+    local closestIslandName = nil
+    local shortestDist = math.huge
+
+    for _, setter in pairs(SpawnSetters:GetChildren()) do
+        local setterCF = GetCFrame(setter)
+        if setterCF then
+            local dist = (fruitPos - setterCF.Position).Magnitude
+            if dist < shortestDist then
+                shortestDist = dist
+                closestIslandName = setter.Name
+            end
+        end
+    end
+    return closestIslandName, shortestDist
+end
+
 -- Hàm tìm trái gần nhất
 local function GetClosestFruit()
     local char = Player.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return nil, nil end
 
-    local logic = Workspace:FindFirstChild("Logic")
-    if not logic then return nil, nil end
-
     local closestFruit = nil
     local closestPrompt = nil
     local shortestDist = math.huge
 
     local function CheckFolder(folderName)
-        local folder = logic:FindFirstChild(folderName)
+        local folder = Logic:FindFirstChild(folderName)
         if not folder then return end
         for _, item in pairs(folder:GetDescendants()) do
             if item:IsA("Model") or item:IsA("BasePart") then
                 local prompt = item:FindFirstChildWhichIsA("ProximityPrompt", true)
                 if prompt then
-                    local targetCFrame = item:IsA("Model") and item:GetPivot() or item.CFrame
-                    local dist = (root.Position - targetCFrame.Position).Magnitude
-                    if dist < shortestDist then
-                        shortestDist = dist
-                        closestFruit = item
-                        closestPrompt = prompt
+                    local targetCFrame = GetCFrame(item)
+                    if targetCFrame then
+                        local dist = (root.Position - targetCFrame.Position).Magnitude
+                        if dist < shortestDist then
+                            shortestDist = dist
+                            closestFruit = item
+                            closestPrompt = prompt
+                        end
                     end
                 end
             end
@@ -422,41 +457,125 @@ local function ToggleAutoFarm(state)
 
     task.spawn(function()
         while HubState.Toggles.AutoFarm do
+            task.wait(0.5)
+            local char = Player.Character
+            local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+            local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+            
+            -- Nếu nhân vật đang chết (đang reset), đợi hồi sinh
+            if not rootPart or not humanoid or humanoid.Health <= 0 then
+                task.wait(1)
+                continue
+            end
+            
+            -- ==================================================
+            -- CHỜ BÁN HẾT TRÁI TRONG TÚI TRƯỚC KHI ĐI LỤM TIẾP
+            -- ==================================================
+            if HubState.Toggles.AutoSell then
+                local function HasFruits()
+                    if Player.Backpack then
+                        for _, obj in ipairs(Player.Backpack:GetChildren()) do
+                            if obj:IsA("Tool") and (obj.Name:match("Fruit") or obj.Name:match("Mi")) then return true end
+                        end
+                    end
+                    if Player.Character then
+                        for _, obj in ipairs(Player.Character:GetChildren()) do
+                            if obj:IsA("Tool") and (obj.Name:match("Fruit") or obj.Name:match("Mi")) then return true end
+                        end
+                    end
+                    return false
+                end
+
+                if HasFruits() then
+                    print("🛑 Đang có trái trong túi, chờ Auto Sell bán hết...")
+                    local waitTimeout = 0
+                    while HasFruits() and HubState.Toggles.AutoFarm and HubState.Toggles.AutoSell and waitTimeout < 20 do
+                        task.wait(1)
+                        waitTimeout = waitTimeout + 1
+                    end
+                    print("✅ Đã bán xong, tiếp tục lụm!")
+                end
+            end
+
             local targetFruit, targetPrompt = GetClosestFruit()
             
             if targetFruit and targetPrompt then
-                local char = Player.Character
-                local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+                local fruitCFrame = GetCFrame(targetFruit)
+                if not fruitCFrame then continue end
+                local targetPos = Vector3.new(fruitCFrame.Position.X, fruitCFrame.Position.Y + 2, fruitCFrame.Position.Z)
                 
-                if rootPart then
-                    local targetCFrame = targetFruit:IsA("Model") and targetFruit:GetPivot() or targetFruit.CFrame
-                    local targetPos = targetCFrame.Position
+                local distFromPlayer = (rootPart.Position - targetPos).Magnitude
+                
+                -- ═══════════════════════════════════════════
+                -- SMART TELEPORT BYPASS: Trái xa > 800 stud
+                -- Set Spawn đảo gần trái → Reset → Hồi sinh gần → Bay ngắn lụm
+                -- ═══════════════════════════════════════════
+                if distFromPlayer > HubState.Settings.TeleportThreshold then
+                    local closestIsland, distFromIsland = GetClosestIslandToFruit(targetPos)
                     
-                    -- Bay 3 pha: LÊN CAO → NGANG → XUỐNG (giữ float)
-                    local flyOk, flyBV, flyNoclip = FlyToFruit(rootPart, targetPos, HubState.Settings.FlySpeed)
-
-                    if HubState.Toggles.AutoFarm and rootPart and rootPart.Parent then
-                        -- Ép dịch chuyển thẳng nếu vẫn còn lệch
-                        if (rootPart.Position - targetPos).Magnitude > 5 then
-                            rootPart.CFrame = CFrame.new(targetPos) * rootPart.CFrame.Rotation
-                            task.wait(0.1)
-                        end
-
-                        -- Spam fireproximityprompt cho đến khi trái biến mất
-                        -- Vẫn giữ BodyVelocity + noclip nên không bị rơi
-                        local timeout = 0
-                        while targetFruit.Parent and targetPrompt.Parent and HubState.Toggles.AutoFarm and timeout < 15 do
-                            pcall(function() fireproximityprompt(targetPrompt) end)
-                            task.wait(0.2)
-                            timeout = timeout + 1
-                        end
+                    if closestIsland and distFromIsland < distFromPlayer then
+                        print("🗺️ Bypass Teleport → Đảo: " .. closestIsland .. " (" .. math.floor(distFromIsland) .. " stud từ trái)")
+                        
+                        -- Bay lên cao 1 chút để tránh anti-cheat soi
+                        rootPart.CFrame = rootPart.CFrame * CFrame.new(0, 50, 0)
+                        task.wait(0.2)
+                        
+                        -- Set Spawn tại đảo gần trái nhất
+                        pcall(function() SetSpawnEvent:FireServer(closestIsland) end)
+                        task.wait(0.5)
+                        
+                        -- Tự sát → hồi sinh ở đảo mới
+                        humanoid.Health = 0
+                        print("💀 Reset! Đợi hồi sinh ở " .. closestIsland .. "...")
+                        
+                        -- Đợi hồi sinh (tối đa 8 giây)
+                        local respawnWait = 0
+                        repeat
+                            task.wait(0.5)
+                            respawnWait = respawnWait + 0.5
+                            char = Player.Character
+                            rootPart = char and char:FindFirstChild("HumanoidRootPart")
+                            humanoid = char and char:FindFirstChildOfClass("Humanoid")
+                        until (rootPart and humanoid and humanoid.Health > 0) or respawnWait >= 8
+                        
+                        task.wait(0.5) -- Buffer cho ổn định
+                        continue -- Quay lại vòng lặp, giờ đã ở gần trái → bay ngắn lụm
                     end
-                    
-                    -- Lụm xong hoặc timeout → cleanup flight
-                    CleanupFlight(flyBV, flyNoclip)
                 end
+                
+                -- ═══════════════════════════════════════════
+                -- Ở GẦN hoặc ĐÃ HỒI SINH → Bay 3 pha lụm trái
+                -- ═══════════════════════════════════════════
+                print("🚀 Bay tới trái (" .. math.floor(distFromPlayer) .. " stud)")
+                
+                local flyOk, flyBV, flyNoclip = FlyToFruit(rootPart, targetPos, HubState.Settings.FlySpeed)
+
+                if HubState.Toggles.AutoFarm and rootPart and rootPart.Parent then
+                    -- Ép dịch chuyển thẳng nếu vẫn còn lệch
+                    if (rootPart.Position - targetPos).Magnitude > 5 then
+                        rootPart.CFrame = CFrame.new(targetPos) * rootPart.CFrame.Rotation
+                        task.wait(0.1)
+                    end
+
+                    -- Spam fireproximityprompt (giữ float, không rơi)
+                    local timeout = 0
+                    while targetFruit.Parent and targetPrompt.Parent and HubState.Toggles.AutoFarm and timeout < 15 do
+                        pcall(function() fireproximityprompt(targetPrompt) end)
+                        task.wait(0.2)
+                        timeout = timeout + 1
+                    end
+                    print("✅ Lụm xong trái!")
+                end
+                
+                -- Lụm xong → cleanup flight
+                CleanupFlight(flyBV, flyNoclip)
             else
-                task.wait(1) -- Nếu không có trái nào, chờ 1s rồi quét lại
+                -- Không có trái, cleanup nếu còn sót
+                if rootPart then
+                    local oldBV = rootPart:FindFirstChild("Toann_FlyBV")
+                    if oldBV then oldBV:Destroy() end
+                end
+                task.wait(1)
             end
         end
     end)
